@@ -19,6 +19,7 @@
 
 using ProtonVPN.Common.Legacy.Abstract;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.LocalAgent;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 
@@ -39,4 +40,8 @@ public interface IVpnServiceCaller
 
     Task RepeatStateAsync();
     Task RepeatPortForwardingStateAsync();
+
+    Task ApplyMultiTunnelPolicyAsync(MultiTunnelPolicyIpcEntity policy);
+    Task<Result<MultiTunnelPolicyIpcEntity>> GetMultiTunnelPolicyAsync();
+    Task<Result<RoutingDecisionIpcEntity>> EvaluateMultiTunnelTrafficAsync(TrafficQueryIpcEntity query);
 }

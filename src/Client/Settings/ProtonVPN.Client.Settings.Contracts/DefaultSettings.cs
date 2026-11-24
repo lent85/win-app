@@ -72,6 +72,8 @@ public static class DefaultSettings
     public static bool IsPortForwardingEnabled = false;
     public static bool IsPortForwardingNotificationEnabled = true;
     public static bool IsSplitTunnelingEnabled = false;
+    public static bool IsMultiTunnelEnabled = false;
+    public static string MultiTunnelPolicyJson = string.Empty;
     public static bool IsSmartReconnectEnabled = true;
     public static SplitTunnelingMode SplitTunnelingMode = SplitTunnelingMode.Standard;
     public static List<SplitTunnelingIpAddress> SplitTunnelingIpAddressesList = [];

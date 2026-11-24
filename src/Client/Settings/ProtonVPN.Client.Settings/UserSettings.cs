@@ -280,6 +280,18 @@ public class UserSettings : GlobalSettings, IUserSettings
         set => _userCache.SetValueType<bool>(value, SettingEncryption.Unencrypted);
     }
 
+    public bool IsMultiTunnelEnabled
+    {
+        get => _userCache.GetValueType<bool>(SettingEncryption.Unencrypted) ?? DefaultSettings.IsMultiTunnelEnabled;
+        set => _userCache.SetValueType<bool>(value, SettingEncryption.Unencrypted);
+    }
+
+    public string MultiTunnelPolicyJson
+    {
+        get => _userCache.GetReferenceType<string>(SettingEncryption.Unencrypted) ?? DefaultSettings.MultiTunnelPolicyJson;
+        set => _userCache.SetReferenceType(value, SettingEncryption.Unencrypted);
+    }
+
     public bool IsSmartReconnectEnabled
     {
         get => _userCache.GetValueType<bool>(SettingEncryption.Unencrypted) ?? DefaultSettings.IsSmartReconnectEnabled;

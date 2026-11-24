@@ -23,6 +23,7 @@ using ProtonVPN.Common.Core.Networking;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.ConnectLogs;
 using ProtonVPN.Service.KillSwitch;
+using ProtonVPN.Service.MultiTunnel;
 using ProtonVPN.Service.SplitTunneling;
 using ProtonVPN.Service.Vpn;
 using ProtonVPN.Vpn.PortMapping;
@@ -36,6 +37,7 @@ internal sealed class VpnStateSideEffects : IVpnStateSideEffects
     private readonly ISplitTunnel _splitTunnel;
     private readonly IIPv6Manager _ipv6Manager;
     private readonly IPortMappingProtocolClient _portMappingProtocolClient;
+    private readonly IMultiTunnelService _multiTunnelService;
 
     private VpnStatus? _vpnStatus;
     private State? _state;
@@ -45,13 +47,15 @@ internal sealed class VpnStateSideEffects : IVpnStateSideEffects
         IKillSwitch killSwitch,
         ISplitTunnel splitTunnel,
         IIPv6Manager ipv6Manager,
-        IPortMappingProtocolClient portMappingProtocolClient)
+        IPortMappingProtocolClient portMappingProtocolClient,
+        IMultiTunnelService multiTunnelService)
     {
         _logger = logger;
         _killSwitch = killSwitch;
         _splitTunnel = splitTunnel;
         _ipv6Manager = ipv6Manager;
         _portMappingProtocolClient = portMappingProtocolClient;
+        _multiTunnelService = multiTunnelService;
     }
 
     public async Task ApplyAsync(VpnState state, State stateMachineState)
@@ -78,6 +82,7 @@ internal sealed class VpnStateSideEffects : IVpnStateSideEffects
             case VpnStatus.Connected:
                 _killSwitch.OnVpnConnected(state);
                 _splitTunnel.OnVpnConnected(state);
+                _multiTunnelService.OnVpnConnected(state);
                 break;
             case VpnStatus.Disconnected:
                 if (stateMachineState == State.Disconnected)
@@ -86,6 +91,7 @@ internal sealed class VpnStateSideEffects : IVpnStateSideEffects
                 }
 
                 _splitTunnel.OnVpnDisconnected(state, isReconnecting: stateMachineState != State.Disconnected);
+                _multiTunnelService.OnVpnDisconnected(state, isReconnecting: stateMachineState != State.Disconnected);
                 break;
         }
 

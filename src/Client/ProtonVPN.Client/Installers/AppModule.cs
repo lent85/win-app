@@ -372,6 +372,7 @@ public class AppModule : Module
         RegisterViewModel<PortForwardingWidgetViewModel>(builder);
         RegisterViewModel<SplitTunnelingPageViewModel>(builder);
         RegisterViewModel<SplitTunnelingWidgetViewModel>(builder);
+        RegisterViewModel<MultiTunnelPageViewModel>(builder);
         RegisterViewModel<SettingsPageViewModel>(builder);
         RegisterViewModel<SettingsWidgetViewModel>(builder);
         RegisterViewModel<CommonSettingsPageViewModel>(builder);

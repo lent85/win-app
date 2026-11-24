@@ -36,6 +36,7 @@ using ProtonVPN.OperatingSystems.PowerEvents.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts;
 using ProtonVPN.ProTun.Contracts;
 using ProtonVPN.Service.Firewall;
+using ProtonVPN.Service.MultiTunnel;
 using ProtonVPN.Service.StateMachine;
 using ProtonVPN.Vpn.Common;
 
@@ -57,6 +58,7 @@ internal partial class VpnService : ServiceBase
     private readonly INrptWatchdogScheduler _nrptWatchdogScheduler;
     private readonly INrptWatchdogStarter _nrptWatchdogStarter;
     private readonly IVpnConnectionStateMachine _vpnConnectionStateMachine;
+    private readonly IMultiTunnelService _multiTunnelService;
 
     public VpnService(
         ILogger logger,
@@ -70,7 +72,8 @@ internal partial class VpnService : ServiceBase
         IProTunManager proTunManager,
         INrptWatchdogScheduler nrptWatchdogScheduler,   
         INrptWatchdogStarter nrptWatchdogStarter,
-        IVpnConnectionStateMachine vpnConnectionStateMachine)
+        IVpnConnectionStateMachine vpnConnectionStateMachine,
+        IMultiTunnelService multiTunnelService)
     {
         _logger = logger;
         _issueReporter = issueReporter;
@@ -83,6 +86,7 @@ internal partial class VpnService : ServiceBase
         _nrptWatchdogScheduler = nrptWatchdogScheduler;
         _nrptWatchdogStarter = nrptWatchdogStarter;
         _vpnConnectionStateMachine = vpnConnectionStateMachine;
+        _multiTunnelService = multiTunnelService;
 
         powerEventNotifier.OnResume += OnPowerEventResume;
         _grpcServer.InvokingServiceStop += OnInvokingServiceStop;
@@ -148,6 +152,7 @@ internal partial class VpnService : ServiceBase
             _logger.Info<AppServiceStopLog>("Service is stopping");
             LogEvent("Service is stopping");
 
+            _multiTunnelService.OnServiceStop();
             await _vpnConnectionStateMachine.DisconnectAsync();
 
             if (!_ipv6.IsEnabled)

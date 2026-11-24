@@ -1,0 +1,497 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+Copyright (c) 2026 Proton AG
+
+This file is part of ProtonVPN.
+
+ProtonVPN is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+-->
+
+<Page x:Class="ProtonVPN.Client.UI.Main.Settings.Pages.Connection.MultiTunnelPageView"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+      xmlns:custom="using:ProtonVPN.Client.Common.UI.Controls.Custom"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:local="using:ProtonVPN.Client.UI.Main.Settings.Pages.Connection"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      x:DefaultBindMode="OneWay"
+      AutomationProperties.AutomationId="MultiTunnelPage"
+      NavigationCacheMode="Required"
+      mc:Ignorable="d">
+
+    <Page.Resources>
+        <Thickness x:Key="PageContentControlPadding">16</Thickness>
+    </Page.Resources>
+
+    <custom:SettingsPageContentControl x:Name="PageContentHost"
+                                       ApplyCommand="{x:Bind ViewModel.ApplyCommand, Mode=OneTime}"
+                                       ApplyCommandText="{x:Bind ViewModel.ApplyCommandText}"
+                                       BackCommand="{x:Bind ViewModel.NavigateBackCommand, Mode=OneTime}"
+                                       CloseCommand="{x:Bind ViewModel.CloseCommand, Mode=OneTime}"
+                                       IsBackButtonVisible="{x:Bind ViewModel.CanGoBack}">
+
+        <custom:SettingsPageContentControl.PageHeader>
+            <custom:SettingsPageHeaderContentControl Header="{x:Bind ViewModel.Title}" />
+        </custom:SettingsPageContentControl.PageHeader>
+
+        <StackPanel x:Name="ContentArea"
+                    Spacing="20">
+
+            <!-- 1. Master Toggle & Default Unmatched Routing -->
+            <controls:SettingsExpander Description="{x:Bind ViewModel.SummaryText}"
+                                       Header="Multi-Tunnel &amp; Priority Selective Routing"
+                                       IsExpanded="True"
+                                       IsTabStop="False">
+                <ToggleSwitch AutomationProperties.AutomationId="MultiTunnelEnableSwitch"
+                              IsOn="{x:Bind ViewModel.IsMultiTunnelEnabled, Mode=TwoWay}"
+                              Style="{StaticResource ToggleSwitchStyle}" />
+                <controls:SettingsExpander.Items>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="100" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Text="Default policy when no priority rule matches:" />
+                        <ComboBox Grid.Column="1"
+                                  HorizontalAlignment="Stretch"
+                                  ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedDefaultTargetType, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+                        <ComboBox Grid.Column="2"
+                                  HorizontalAlignment="Stretch"
+                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedDefaultTunnelId, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}"
+                                  Visibility="{x:Bind ViewModel.IsDefaultTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Grid>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+
+            <!-- 2. Tunnel Slots (T1..T5) + Country/Server Picker -->
+            <Border Padding="16"
+                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Text="Tunnel Slots (T1 - T5) &amp; Country / Server Picker" />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox Grid.Column="0"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Target Slot"
+                                  ItemsSource="{x:Bind ViewModel.SlotPickerTargets}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedEditSlotId, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+
+                        <ComboBox Grid.Column="1"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Country / Exit"
+                                  ItemsSource="{x:Bind ViewModel.AvailableCountries}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPickerCountry, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+
+                        <ComboBox Grid.Column="2"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Server"
+                                  ItemsSource="{x:Bind ViewModel.AvailableServers}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPickerServer, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+
+                        <Button Grid.Column="3"
+                                VerticalAlignment="Bottom"
+                                Command="{x:Bind ViewModel.AddOrUpdateSlotCommand, Mode=OneTime}"
+                                Content="Apply / + Slot"
+                                Style="{StaticResource PrimaryButtonStyle}" />
+                    </Grid>
+
+                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="{x:Bind ViewModel.SlotPickerStatus}" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Slots}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:MultiTunnelSlotItem">
+                                <Border Margin="0,4,0,0"
+                                        Padding="12,8"
+                                        Background="{ThemeResource InteractionDefaultColorBrush}"
+                                        BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Text="{x:Bind SlotId}" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource BodyTextBlockStyle}"
+                                                   Text="{x:Bind SlotSummary}"
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                        <TextBlock Grid.Column="2"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind StatusText}" />
+
+                                        <Button Grid.Column="3"
+                                                Click="OnConnectSlotClick"
+                                                Content="Connect"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{x:Bind SlotId}" />
+
+                                        <Button Grid.Column="4"
+                                                Click="OnRemoveSlotClick"
+                                                Content="Remove"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{x:Bind SlotId}"
+                                                Visibility="{x:Bind CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- 3. Rule Conflict Warnings (if any) -->
+            <Border Padding="12"
+                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                    BorderBrush="{ThemeResource SignalWarningColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Visibility="{x:Bind ViewModel.HasConflicts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel Spacing="4">
+                    <TextBlock Foreground="{ThemeResource SignalWarningColorBrush}"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Text="Rule Ordering Conflicts Detected" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.ConflictMessages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Text="{x:Bind}"
+                                           TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- 4. Compact 2-Line Priority Rules Table -->
+            <Border Padding="16"
+                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       Text="Priority Selective Routing Rules (Top-Down First Match Wins)" />
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="Higher rules get higher WFP filter weights (up to 60,000)." />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Command="{x:Bind ViewModel.ResetDefaultRulesCommand, Mode=OneTime}"
+                                Content="Reset Defaults"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Rules}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:MultiTunnelRuleItem">
+                                <Border Margin="0,4,0,0"
+                                        Padding="10,8"
+                                        Background="{ThemeResource InteractionDefaultColorBrush}"
+                                        BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                    <Grid ColumnSpacing="8"
+                                          RowSpacing="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="36" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Row 0: Enabled, #Priority, Name, Target + Fallback, Actions -->
+                                        <CheckBox Grid.Row="0"
+                                                  Grid.Column="0"
+                                                  MinWidth="24"
+                                                  Click="OnRuleEnabledClick"
+                                                  IsChecked="{x:Bind IsEnabled}"
+                                                  Style="{StaticResource CheckBoxStyle}"
+                                                  Tag="{x:Bind Id}" />
+
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="1"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Text="{x:Bind PriorityBadge}" />
+
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="2"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Text="{x:Bind Name}"
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                        <Border Grid.Row="0"
+                                                Grid.Column="3"
+                                                Padding="8,2"
+                                                VerticalAlignment="Center"
+                                                Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                CornerRadius="4">
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Text="{x:Bind TargetBadge}" />
+                                        </Border>
+
+                                        <TextBlock Grid.Row="0"
+                                                   Grid.Column="4"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind FallbackBadge}" />
+
+                                        <StackPanel Grid.Row="0"
+                                                    Grid.Column="5"
+                                                    Orientation="Horizontal"
+                                                    Spacing="4">
+                                            <Button Click="OnMoveRuleUpClick"
+                                                    Content="Up"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Tag="{x:Bind Id}" />
+                                            <Button Click="OnMoveRuleDownClick"
+                                                    Content="Down"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Tag="{x:Bind Id}" />
+                                            <Button Click="OnEditRuleClick"
+                                                    Content="Edit"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Tag="{x:Bind Id}" />
+                                            <Button Click="OnDeleteRuleClick"
+                                                    Content="Del"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Tag="{x:Bind Id}" />
+                                        </StackPanel>
+
+                                        <!-- Row 1: Match Criteria -->
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="2"
+                                                   Grid.ColumnSpan="4"
+                                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind CriteriaSummary}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Inline Rule Editor -->
+                    <Border Margin="0,8,0,0"
+                            Padding="12"
+                            BorderBrush="{ThemeResource BorderNormColorBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <StackPanel Spacing="8">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.RuleEditorTitle}" />
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Header="Rule Name"
+                                         PlaceholderText="e.g., AI &amp; Work Tools"
+                                         Text="{x:Bind ViewModel.RuleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="1"
+                                         Header="Applications (comma-separated)"
+                                         PlaceholderText="chrome, qbittorrent, C:\Path\app.exe"
+                                         Text="{x:Bind ViewModel.RuleAppPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Header="Domains (wildcards supported)"
+                                         PlaceholderText="*.openai.com, *.vn"
+                                         Text="{x:Bind ViewModel.RuleDomainPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Grid.Column="1"
+                                         Header="IP / CIDR"
+                                         PlaceholderText="192.168.0.0/16, 10.100.0.0/16"
+                                         Text="{x:Bind ViewModel.RuleIpCidrPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="130" />
+                                    <ColumnDefinition Width="95" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Header="Ports"
+                                         PlaceholderText="443, 3478-3481"
+                                         Text="{x:Bind ViewModel.RulePortPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          Header="Protocol"
+                                          ItemsSource="{x:Bind ViewModel.ProtocolOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.RuleProtocol, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" />
+                                <ComboBox Grid.Column="2"
+                                          HorizontalAlignment="Stretch"
+                                          Header="Route To"
+                                          ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.RuleTargetType, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" />
+                                <ComboBox Grid.Column="3"
+                                          HorizontalAlignment="Stretch"
+                                          Header="Tunnel"
+                                          ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.RuleTargetTunnelId, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          Visibility="{x:Bind ViewModel.IsRuleTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ComboBox Grid.Column="4"
+                                          HorizontalAlignment="Stretch"
+                                          Header="When Disconnected"
+                                          ItemsSource="{x:Bind ViewModel.FallbackOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.RuleFallbackBehavior, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          Visibility="{x:Bind ViewModel.IsRuleTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <ComboBox Width="150"
+                                          Header="Fallback Tunnel"
+                                          ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.RuleFallbackTunnelId, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          Visibility="{x:Bind ViewModel.IsRuleFallbackTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button VerticalAlignment="Bottom"
+                                        Command="{x:Bind ViewModel.SaveRuleCommand, Mode=OneTime}"
+                                        Content="Save Rule"
+                                        Style="{StaticResource PrimaryButtonStyle}" />
+                                <Button VerticalAlignment="Bottom"
+                                        Command="{x:Bind ViewModel.CancelEditRuleCommand, Mode=OneTime}"
+                                        Content="Clear / Cancel"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- 5. Traffic Routing Simulator -->
+            <Border Padding="16"
+                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="10">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Text="Traffic Routing Simulator (Verify WFP Precedence)" />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="105" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Header="App / Process"
+                                 Text="{x:Bind ViewModel.SimApp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Grid.Column="1"
+                                 Header="Domain"
+                                 Text="{x:Bind ViewModel.SimDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Grid.Column="2"
+                                 Header="Remote IP"
+                                 Text="{x:Bind ViewModel.SimRemoteIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Grid.Column="3"
+                                 Header="Port"
+                                 Text="{x:Bind ViewModel.SimPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox Grid.Column="4"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Protocol"
+                                  ItemsSource="{x:Bind ViewModel.ProtocolOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SimProtocol, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+                        <Button Grid.Column="5"
+                                VerticalAlignment="Bottom"
+                                Command="{x:Bind ViewModel.RunSimulationCommand, Mode=OneTime}"
+                                Content="Simulate"
+                                Style="{StaticResource PrimaryButtonStyle}" />
+                    </Grid>
+
+                    <Border Padding="10,8"
+                            Background="{ThemeResource InteractionDefaultColorBrush}"
+                            CornerRadius="6"
+                            Visibility="{x:Bind ViewModel.HasSimResult, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.SimResultSummary}" />
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.SimResultDetails}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </custom:SettingsPageContentControl>
+
+</Page>

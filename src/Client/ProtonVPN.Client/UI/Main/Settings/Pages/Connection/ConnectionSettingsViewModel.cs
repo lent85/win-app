@@ -27,6 +27,7 @@ using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Localization.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Profiles.Contracts.Messages;
 using ProtonVPN.Client.Logic.Profiles.Contracts.Models;
 using ProtonVPN.Client.Logic.Users.Contracts.Messages;
@@ -41,13 +42,15 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
     IEventMessageReceiver<SettingChangedMessage>,
     IEventMessageReceiver<VpnPlanChangedMessage>,
     IEventMessageReceiver<ConnectionStatusChangedMessage>,
-    IEventMessageReceiver<ProfilesChangedMessage>
+    IEventMessageReceiver<ProfilesChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private readonly ISettings _settings;
     private readonly IUpsellCarouselWindowActivator _upsellCarouselWindowActivator;
     private readonly ISettingsViewNavigator _settingsViewNavigator;
     private readonly IProfileEditor _profileEditor;
     private readonly IConnectionManager _connectionManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
 
     public bool IsPaidUser => _settings.VpnPlan.IsPaid;
 
@@ -75,6 +78,10 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
         ? Localizer.GetSplitTunnelingMode(_settings.SplitTunnelingMode, useShortVersion: true)
         : Localizer.GetToggleValue(false);
 
+    public string MultiTunnelSettingsState => _multiTunnelManager.IsEnabled
+        ? $"On • {_multiTunnelManager.Slots.Count} slots • {_multiTunnelManager.EnabledRuleCount}/{_multiTunnelManager.Rules.Count} rules"
+        : Localizer.GetToggleValue(false);
+
     protected VpnProtocol Protocol => AreSettingsOverridden
         ? CurrentProfile!.Settings.VpnProtocol
         : _settings.VpnProtocol;
@@ -93,6 +100,7 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
         ISettingsViewNavigator settingsViewNavigator,
         IProfileEditor profileEditor,
         IConnectionManager connectionManager,
+        IMultiTunnelManager multiTunnelManager,
         IViewModelHelper viewModelHelper)
         : base(viewModelHelper)
     {
@@ -101,6 +109,7 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
         _settingsViewNavigator = settingsViewNavigator;
         _profileEditor = profileEditor;
         _connectionManager = connectionManager;
+        _multiTunnelManager = multiTunnelManager;
     }
 
     public void Receive(SettingChangedMessage message)
@@ -159,6 +168,11 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
         {
             ExecuteOnUIThread(InvalidateAllProperties);
         }
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
+    {
+        ExecuteOnUIThread(() => OnPropertyChanged(nameof(MultiTunnelSettingsState)));
     }
 
     protected override void OnLanguageChanged()
@@ -235,6 +249,12 @@ public partial class ConnectionSettingsViewModel : ActivatableViewModelBase,
     private async Task NavigateToAdvancedSettingsPageAsync()
     {
         await _settingsViewNavigator.NavigateToAdvancedSettingsViewAsync();
+    }
+
+    [RelayCommand]
+    private async Task NavigateToMultiTunnelPageAsync()
+    {
+        await _settingsViewNavigator.NavigateToMultiTunnelSettingsViewAsync();
     }
 
     private Task TriggerSettingsUpsellProcessAsync(ModalSource modalSource)

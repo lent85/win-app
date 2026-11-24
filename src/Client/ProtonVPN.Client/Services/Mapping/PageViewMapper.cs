@@ -82,6 +82,7 @@ public class PageViewMapper : ViewMapperBase<PageViewModelBase, Page>, IPageView
         ConfigureMapping<NetShieldPageViewModel, NetShieldPageView>();
         ConfigureMapping<PortForwardingPageViewModel, PortForwardingPageView>();
         ConfigureMapping<SplitTunnelingPageViewModel, SplitTunnelingPageView>();
+        ConfigureMapping<MultiTunnelPageViewModel, MultiTunnelPageView>();
 
         ConfigureMapping<ReportIssueCategoriesPageViewModel, ReportIssueCategoriesPageView>();
         ConfigureMapping<ReportIssueCategoryPageViewModel, ReportIssueCategoryPageView>();

@@ -247,6 +247,12 @@ public partial class SplitTunnelingPageViewModel : SettingsPageViewModelBase
         }
     }
 
+    [RelayCommand]
+    public Task NavigateToMultiTunnelAsync()
+    {
+        return ParentViewNavigator.NavigateToMultiTunnelSettingsViewAsync();
+    }
+
     protected override async Task OnRetrieveSettingsAsync()
     {
         try

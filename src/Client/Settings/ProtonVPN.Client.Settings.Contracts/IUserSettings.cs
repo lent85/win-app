@@ -86,4 +86,6 @@ public interface IUserSettings
     List<ExcludedLocation> ExcludedLocationsList { get; set; }
     bool WasExcludedLocationsSmartDiscoveryPromptDisplayed { get; set; }
     bool WasExcludedLocationsTeachingTipDisplayed { get; set; }
+    bool IsMultiTunnelEnabled { get; set; }
+    string MultiTunnelPolicyJson { get; set; }
 }

@@ -23,6 +23,7 @@ using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.EntityMapping;
 using ProtonVPN.Client.Logic.Connection.Preferences;
 using ProtonVPN.Client.Logic.Connection.GuestHole;
+using ProtonVPN.Client.Logic.Connection.MultiTunnel;
 using ProtonVPN.Client.Logic.Connection.NetworkingTraffic;
 using ProtonVPN.Client.Logic.Connection.RequestCreators;
 using ProtonVPN.Client.Logic.Connection.ServerListGenerators;
@@ -53,6 +54,7 @@ public class ConnectionLogicModule : Module
         builder.RegisterType<ConnectionStatisticalEventsManager>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<RestrictionsObserver>().AsImplementedInterfaces().SingleInstance().AutoActivate();
         builder.RegisterType<ExclusionChecker>().AsImplementedInterfaces().SingleInstance();
+        builder.RegisterType<MultiTunnelManager>().AsImplementedInterfaces().SingleInstance().AutoActivate();
 
         RegisterRequestCreators(builder);
         RegisterServerListGenerators(builder);

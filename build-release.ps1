@@ -160,14 +160,15 @@ try {
     # 3. Run unit tests
     if (-not $SkipTests) {
         $TestProjects = @(
-            "src\ProtonVPN.Service.Tests\ProtonVPN.Service.Tests.csproj",
-            "src\Tests\ProtonVPN.Service.Tests\ProtonVPN.Service.Tests.csproj"
+            "src\Tests\ProtonVPN.Service.Tests\ProtonVPN.Service.Tests.csproj",
+            "src\Client\Logic\Auth\ProtonVPN.Client.Logic.Auth.Tests\ProtonVPN.Client.Logic.Auth.Tests.csproj",
+            "src\Client\Logic\Connection\ProtonVPN.Client.Logic.Connection.Tests\ProtonVPN.Client.Logic.Connection.Tests.csproj"
         )
         foreach ($Tp in $TestProjects) {
             $TpPath = Join-Path $RepoRoot $Tp
             if (Test-Path $TpPath) {
                 Write-Host "==> Testing $Tp..."
-                dotnet test $TpPath -c $Configuration --no-build
+                dotnet test $TpPath -c $Configuration
                 if ($LASTEXITCODE -ne 0) { throw "dotnet test failed for $Tp" }
             }
         }

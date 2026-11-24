@@ -274,6 +274,20 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses />.-->
 
             </Grid>
 
+            <controls:SettingsCard AutomationProperties.AutomationId="OpenMultiTunnelSettingsCard"
+                                   Command="{x:Bind ViewModel.NavigateToMultiTunnelCommand, Mode=OneTime}"
+                                   Description="Configure up to 5 tunnel slots (T1-T5), top-down priority rules, per-tunnel kill-switch, and traffic simulator"
+                                   Header="Multi-Tunnel &amp; Priority Selective Routing"
+                                   IsClickEnabled="True"
+                                   Style="{StaticResource DefaultSettingsCardStyle}">
+                <controls:SettingsCard.HeaderIcon>
+                    <pathicons:Sliders />
+                </controls:SettingsCard.HeaderIcon>
+                <controls:SettingsCard.ActionIcon>
+                    <pathicons:ChevronRight />
+                </controls:SettingsCard.ActionIcon>
+            </controls:SettingsCard>
+
         </StackPanel>
     </custom:SettingsPageContentControl>
 

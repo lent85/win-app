@@ -50,6 +50,8 @@ public class SettingsRestorer : ISettingsRestorer
         _settings.IsPortForwardingEnabled = DefaultSettings.IsPortForwardingEnabled;
         _settings.IsPortForwardingNotificationEnabled = DefaultSettings.IsPortForwardingNotificationEnabled;
         _settings.IsSplitTunnelingEnabled = DefaultSettings.IsSplitTunnelingEnabled;
+        _settings.IsMultiTunnelEnabled = DefaultSettings.IsMultiTunnelEnabled;
+        _settings.MultiTunnelPolicyJson = DefaultSettings.MultiTunnelPolicyJson;
         _settings.SplitTunnelingMode = DefaultSettings.SplitTunnelingMode;
         _settings.SplitTunnelingStandardAppsList = DefaultSettings.SplitTunnelingAppsList();
         _settings.SplitTunnelingInverseAppsList = DefaultSettings.SplitTunnelingAppsList();

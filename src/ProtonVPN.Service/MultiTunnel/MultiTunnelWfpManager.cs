@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using ProtonVPN.Logging.Contracts;
@@ -21,14 +22,26 @@ using Action = ProtonVPN.NetworkFilter.Action;
 
 namespace ProtonVPN.Service.MultiTunnel;
 
+public interface IMultiTunnelWfpManager : IDisposable
+{
+    void ApplyMultiTunnelPolicy(
+        IReadOnlyDictionary<string, TunnelSlotRuntimeState> tunnelStates,
+        IReadOnlyList<SelectiveRoutingRule> priorityRules,
+        IReadOnlyDictionary<Guid, IReadOnlyList<IPAddress>> resolvedDomainIpsByRule,
+        IPAddress physicalIpv4Address,
+        IPAddress? physicalIpv6Address);
+
+    void Disable();
+}
+
 /// <summary>
 /// Manages Windows Filtering Platform (WFP) contexts and priority-ordered filters for Multi-Tunnel Proton VPN.
 /// Reuses the EV-signed ProtonVPN.CalloutDriver.sys without kernel driver changes by creating one
 /// ProviderContext per active tunnel slot (T1..T5: 10.{2+k}.0.2) plus one for Direct physical bypass.
 /// </summary>
-public sealed class MultiTunnelWfpManager : IDisposable
+public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 {
-    private const uint WfpMultiTunnelSublayerWeight = 10001;
+    private const uint WfpMultiTunnelSublayerWeight = 10002;
 
     private static readonly Guid ConnectRedirectV4CalloutKey = Guid.Parse("{3c5a284f-af01-51fa-4361-6c6c50424144}");
     private static readonly Guid ConnectRedirectV6CalloutKey = Guid.Parse("{3c5a284f-af01-51fa-4361-6c6c50424145}");
@@ -207,28 +220,42 @@ public sealed class MultiTunnelWfpManager : IDisposable
         // A. App-based rules
         if (rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition)
         {
-            foreach (string appPath in SplitEntries(rule.AppPattern!))
+            foreach (string rawAppPath in SplitEntries(rule.AppPattern!))
             {
+                string appPath = rawAppPath.Trim().Trim('"');
+                if (string.IsNullOrWhiteSpace(appPath) || !Path.IsPathRooted(appPath) || !File.Exists(appPath))
+                {
+                    _logger.Debug<SplitTunnelLog>(
+                        $"MultiTunnelWfpManager: Skipping non-rooted or missing app path '{appPath}' for Rule #{rule.PriorityOrder} ('{rule.Name}').");
+                    continue;
+                }
+
                 if (shouldBlock)
                 {
-                    _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, appPath, isDnsPortExcluded: false);
-                    _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, appPath, isDnsPortExcluded: false);
+                    SafeRunWfpFilter(() =>
+                    {
+                        _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, appPath, isDnsPortExcluded: false);
+                        _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, appPath, isDnsPortExcluded: false);
+                    }, $"Rule #{rule.PriorityOrder} AppBlock '{appPath}'");
                 }
                 else if (targetCtxV4 is not null)
                 {
-                    _sublayer.CreateAppCalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, appPath, isDnsPortExcluded: false);
-                    _sublayer.CreateAppCalloutFilter(display, Layer.BindRedirectV4, weight, bindCalloutV4, targetCtxV4, appPath, isDnsPortExcluded: false);
-                    _sublayer.CreateAppFilter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, appPath, isDnsPortExcluded: false);
+                    SafeRunWfpFilter(() =>
+                    {
+                        _sublayer.CreateAppCalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, appPath, isDnsPortExcluded: false);
+                        _sublayer.CreateAppCalloutFilter(display, Layer.BindRedirectV4, weight, bindCalloutV4, targetCtxV4, appPath, isDnsPortExcluded: false);
+                        _sublayer.CreateAppFilter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, appPath, isDnsPortExcluded: false);
 
-                    if (targetCtxV6 is not null && connectCalloutV6 is not null && bindCalloutV6 is not null)
-                    {
-                        _sublayer.CreateAppCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
-                        _sublayer.CreateAppCalloutFilter(display, Layer.BindRedirectV6, weight, bindCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
-                    }
-                    else
-                    {
-                        _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, appPath, isDnsPortExcluded: false);
-                    }
+                        if (targetCtxV6 is not null && connectCalloutV6 is not null && bindCalloutV6 is not null)
+                        {
+                            _sublayer.CreateAppCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
+                            _sublayer.CreateAppCalloutFilter(display, Layer.BindRedirectV6, weight, bindCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
+                        }
+                        else
+                        {
+                            _sublayer.CreateAppFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, appPath, isDnsPortExcluded: false);
+                        }
+                    }, $"Rule #{rule.PriorityOrder} AppRedirect '{appPath}'");
                 }
             }
         }
@@ -242,12 +269,17 @@ public sealed class MultiTunnelWfpManager : IDisposable
                 {
                     if (shouldBlock)
                     {
-                        _sublayer.CreateRemoteIPv4Filter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, ip.ToString());
+                        SafeRunWfpFilter(
+                            () => _sublayer.CreateRemoteIPv4Filter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, ip.ToString()),
+                            $"Rule #{rule.PriorityOrder} DomainBlock '{ip}'");
                     }
                     else if (targetCtxV4 is not null)
                     {
-                        _sublayer.CreateRemoteIPv4CalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, ip.ToString());
-                        _sublayer.CreateRemoteIPv4Filter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, ip.ToString());
+                        SafeRunWfpFilter(() =>
+                        {
+                            _sublayer.CreateRemoteIPv4CalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, ip.ToString());
+                            _sublayer.CreateRemoteIPv4Filter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, ip.ToString());
+                        }, $"Rule #{rule.PriorityOrder} DomainRedirect '{ip}'");
                     }
                 }
             }
@@ -265,18 +297,27 @@ public sealed class MultiTunnelWfpManager : IDisposable
 
                 if (shouldBlock)
                 {
-                    Layer authLayer = netAddr.IsIpv6 ? Layer.AppAuthConnectV6 : Layer.AppAuthConnectV4;
-                    _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, authLayer, weight, netAddr);
+                    SafeRunWfpFilter(() =>
+                    {
+                        Layer authLayer = netAddr.IsIpv6 ? Layer.AppAuthConnectV6 : Layer.AppAuthConnectV4;
+                        _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, authLayer, weight, netAddr);
+                    }, $"Rule #{rule.PriorityOrder} CidrBlock '{rawCidr}'");
                 }
                 else if (!netAddr.IsIpv6 && targetCtxV4 is not null)
                 {
-                    _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, netAddr);
-                    _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, netAddr);
+                    SafeRunWfpFilter(() =>
+                    {
+                        _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, netAddr);
+                        _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, netAddr);
+                    }, $"Rule #{rule.PriorityOrder} CidrRedirectV4 '{rawCidr}'");
                 }
                 else if (netAddr.IsIpv6 && targetCtxV6 is not null && connectCalloutV6 is not null)
                 {
-                    _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, netAddr);
-                    _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, netAddr);
+                    SafeRunWfpFilter(() =>
+                    {
+                        _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, netAddr);
+                        _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, netAddr);
+                    }, $"Rule #{rule.PriorityOrder} CidrRedirectV6 '{rawCidr}'");
                 }
             }
         }
@@ -288,18 +329,33 @@ public sealed class MultiTunnelWfpManager : IDisposable
             Action portAction = shouldBlock ? Action.HardBlock : Action.HardPermit;
             foreach (uint port in ExpandPortsBounded(rule.PortPattern, maxPorts: 64))
             {
-                if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Tcp)
+                SafeRunWfpFilter(() =>
                 {
-                    _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
-                    _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
-                }
+                    if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Tcp)
+                    {
+                        _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
+                        _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
+                    }
 
-                if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Udp)
-                {
-                    _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
-                    _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
-                }
+                    if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Udp)
+                    {
+                        _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
+                        _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
+                    }
+                }, $"Rule #{rule.PriorityOrder} Port {port}/{rule.Protocol}");
             }
+        }
+    }
+
+    private void SafeRunWfpFilter(System.Action action, string context)
+    {
+        try
+        {
+            action();
+        }
+        catch (NetworkFilterException ex)
+        {
+            _logger.Warn<SplitTunnelLog>($"MultiTunnelWfpManager: Failed to create filter for {context} (Code: {ex.Code}).");
         }
     }
 

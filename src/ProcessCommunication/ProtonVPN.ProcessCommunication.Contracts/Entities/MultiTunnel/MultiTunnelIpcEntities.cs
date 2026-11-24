@@ -91,3 +91,30 @@ public class MultiTunnelPolicyIpcEntity
     [DataMember(Order = 4)] public List<TunnelSlotStateIpcEntity> TunnelSlots { get; set; } = [];
     [DataMember(Order = 5)] public List<SelectiveRoutingRuleIpcEntity> PriorityRules { get; set; } = [];
 }
+
+[DataContract]
+public class TrafficQueryIpcEntity
+{
+    [DataMember(Order = 1)] public string? AppPath { get; set; }
+    [DataMember(Order = 2)] public string? ProcessName { get; set; }
+    [DataMember(Order = 3)] public string? ActualAppSha256 { get; set; }
+    [DataMember(Order = 4)] public string? Domain { get; set; }
+    [DataMember(Order = 5)] public string? RemoteIp { get; set; }
+    [DataMember(Order = 6)] public int? RemotePort { get; set; }
+    [DataMember(Order = 7)] public RuleProtocolIpcEntity Protocol { get; set; } = RuleProtocolIpcEntity.Any;
+}
+
+[DataContract]
+public class RoutingDecisionIpcEntity
+{
+    [DataMember(Order = 1)] public RuleTargetTypeIpcEntity EffectiveTargetType { get; set; }
+    [DataMember(Order = 2)] public string? EffectiveTunnelId { get; set; }
+    [DataMember(Order = 3)] public Guid? MatchedRuleId { get; set; }
+    [DataMember(Order = 4)] public int MatchedRulePriority { get; set; }
+    [DataMember(Order = 5)] public string MatchedRuleName { get; set; } = string.Empty;
+    [DataMember(Order = 6)] public bool IsFallbackApplied { get; set; }
+    [DataMember(Order = 7)] public bool IsKillSwitchBlocked { get; set; }
+    [DataMember(Order = 8)] public bool IsHashMismatchBlocked { get; set; }
+    [DataMember(Order = 9)] public uint WfpFilterWeight { get; set; }
+    [DataMember(Order = 10)] public string Explanation { get; set; } = string.Empty;
+}

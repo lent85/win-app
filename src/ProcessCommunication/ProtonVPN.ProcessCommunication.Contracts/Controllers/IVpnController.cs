@@ -19,6 +19,7 @@
 
 using System.ServiceModel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.LocalAgent;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 
@@ -38,4 +39,8 @@ public interface IVpnController : IServiceController
 
     Task RequestNetShieldStats(CancellationToken cancelToken);
     Task RequestConnectionDetails(CancellationToken cancelToken);
+
+    Task ApplyMultiTunnelPolicy(MultiTunnelPolicyIpcEntity policy, CancellationToken cancelToken);
+    Task<MultiTunnelPolicyIpcEntity> GetMultiTunnelPolicy(CancellationToken cancelToken);
+    Task<RoutingDecisionIpcEntity> EvaluateMultiTunnelTraffic(TrafficQueryIpcEntity query, CancellationToken cancelToken);
 }

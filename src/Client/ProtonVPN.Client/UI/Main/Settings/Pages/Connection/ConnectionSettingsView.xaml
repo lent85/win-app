@@ -164,6 +164,20 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 
                 </toolkit:UniformGrid>
 
+                <toolkit:SettingsCard AutomationProperties.AutomationId="MultiTunnelSettingsCard"
+                                      Command="{x:Bind ViewModel.NavigateToMultiTunnelPageCommand, Mode=OneTime}"
+                                      Description="{x:Bind ViewModel.MultiTunnelSettingsState}"
+                                      Header="Multi-Tunnel &amp; Priority Routing"
+                                      IsClickEnabled="True"
+                                      Style="{StaticResource DefaultSettingsCardStyle}">
+                    <toolkit:SettingsCard.HeaderIcon>
+                        <pathicons:Sliders />
+                    </toolkit:SettingsCard.HeaderIcon>
+                    <toolkit:SettingsCard.ActionIcon>
+                        <pathicons:ChevronRight />
+                    </toolkit:SettingsCard.ActionIcon>
+                </toolkit:SettingsCard>
+
                 <toolkit:SettingsCard AutomationProperties.AutomationId="ConnectionPreferencesSettingsCard"
                                       Command="{x:Bind ViewModel.NavigateToConnectionPreferencesSettingsPageCommand, Mode=OneTime}"
                                       Header="{x:Bind ViewModel.Localizer.Get('Settings_Connection_ConnectionPreferences')}"

@@ -31,9 +31,11 @@ using ProtonVPN.Logging.Contracts.Events.ConnectLogs;
 using ProtonVPN.Logging.Contracts.Events.DisconnectLogs;
 using ProtonVPN.ProcessCommunication.Contracts.Controllers;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.LocalAgent;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.Service.ControllerRetries;
+using ProtonVPN.Service.MultiTunnel;
 using ProtonVPN.Service.ProcessCommunication;
 using ProtonVPN.Service.Settings;
 using ProtonVPN.Service.StateMachine;
@@ -58,6 +60,7 @@ public class VpnController : IVpnController
     private readonly ITunnelOrchestrator _tunnelOrchestrator;
     private readonly ILocalAgent _localAgent;
     private readonly ILocalAgentEventReceiver _localAgentEventReceiver;
+    private readonly IMultiTunnelService _multiTunnelService;
 
     public VpnController(
         ILogger logger,
@@ -71,7 +74,8 @@ public class VpnController : IVpnController
         IVpnConnectionStateMachine stateMachine,
         ITunnelOrchestrator tunnelOrchestrator,
         ILocalAgent localAgent,
-        ILocalAgentEventReceiver localAgentEventReceiver)
+        ILocalAgentEventReceiver localAgentEventReceiver,
+        IMultiTunnelService multiTunnelService)
     {
         _logger = logger;
         _serviceSettings = serviceSettings;
@@ -85,6 +89,7 @@ public class VpnController : IVpnController
         _tunnelOrchestrator = tunnelOrchestrator;
         _localAgent = localAgent;
         _localAgentEventReceiver = localAgentEventReceiver;
+        _multiTunnelService = multiTunnelService;
     }
 
     public async Task Connect(ConnectionRequestIpcEntity connectionRequest, CancellationToken cancelToken)
@@ -184,5 +189,23 @@ public class VpnController : IVpnController
     public async Task RequestConnectionDetails(CancellationToken cancelToken)
     {
         await _localAgentEventReceiver.RequestConnectionDetailsAsync(cancelToken);
+    }
+
+    public Task ApplyMultiTunnelPolicy(MultiTunnelPolicyIpcEntity policy, CancellationToken cancelToken)
+    {
+        Ensure.NotNull(policy, nameof(policy));
+        _multiTunnelService.ApplyPolicy(policy);
+        return Task.CompletedTask;
+    }
+
+    public Task<MultiTunnelPolicyIpcEntity> GetMultiTunnelPolicy(CancellationToken cancelToken)
+    {
+        return Task.FromResult(_multiTunnelService.GetCurrentPolicy());
+    }
+
+    public Task<RoutingDecisionIpcEntity> EvaluateMultiTunnelTraffic(TrafficQueryIpcEntity query, CancellationToken cancelToken)
+    {
+        Ensure.NotNull(query, nameof(query));
+        return Task.FromResult(_multiTunnelService.EvaluateTraffic(query));
     }
 }

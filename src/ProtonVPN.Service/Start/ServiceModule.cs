@@ -39,6 +39,7 @@ using ProtonVPN.Serialization.Installers;
 using ProtonVPN.Service.ControllerRetries;
 using ProtonVPN.Service.Driver;
 using ProtonVPN.Service.Firewall;
+using ProtonVPN.Service.MultiTunnel;
 using ProtonVPN.Service.ProcessCommunication;
 using ProtonVPN.Service.Settings;
 using ProtonVPN.Service.SplitTunneling;
@@ -93,6 +94,9 @@ internal class ServiceModule : Module
         builder.RegisterType<AppFilter>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<SplitTunnelNetworkFilters>().SingleInstance();
         builder.RegisterType<SplitTunnelClient>().AsImplementedInterfaces().SingleInstance();
+        builder.RegisterType<MultiTunnelOrchestrator>().AsSelf().SingleInstance();
+        builder.RegisterType<MultiTunnelWfpManager>().As<IMultiTunnelWfpManager>().AsSelf().SingleInstance();
+        builder.RegisterType<MultiTunnelService>().As<IMultiTunnelService>().SingleInstance();
         builder.RegisterType<HttpClients>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<FeedUrlProvider>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<CurrentAppVersionProvider>().AsImplementedInterfaces().SingleInstance();

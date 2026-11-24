@@ -112,6 +112,11 @@ public class SettingsViewNavigator : ViewNavigatorBase, ISettingsViewNavigator,
         return NavigateToAsync<SplitTunnelingPageViewModel>(parameter: isDirectNavigation);
     }
 
+    public Task<bool> NavigateToMultiTunnelSettingsViewAsync(bool isDirectNavigation = false)
+    {
+        return NavigateToAsync<MultiTunnelPageViewModel>(parameter: isDirectNavigation);
+    }
+
     public Task<bool> NavigateToVpnAcceleratorSettingsViewAsync()
     {
         return NavigateToAsync<VpnAcceleratorSettingsPageViewModel>();

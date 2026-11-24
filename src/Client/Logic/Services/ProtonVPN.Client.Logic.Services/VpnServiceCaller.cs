@@ -25,6 +25,7 @@ using ProtonVPN.Logging.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Controllers;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.LocalAgent;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 
@@ -80,5 +81,20 @@ public class VpnServiceCaller : ServiceCallerBase<IVpnController>, IVpnServiceCa
     public Task RepeatPortForwardingStateAsync()
     {
         return InvokeAsync((c, ct) => c.RepeatPortForwardingState(ct).Wrap());
+    }
+
+    public Task ApplyMultiTunnelPolicyAsync(MultiTunnelPolicyIpcEntity policy)
+    {
+        return InvokeAsync((c, ct) => c.ApplyMultiTunnelPolicy(policy, ct).Wrap());
+    }
+
+    public Task<Result<MultiTunnelPolicyIpcEntity>> GetMultiTunnelPolicyAsync()
+    {
+        return InvokeAsync((c, ct) => c.GetMultiTunnelPolicy(ct));
+    }
+
+    public Task<Result<RoutingDecisionIpcEntity>> EvaluateMultiTunnelTrafficAsync(TrafficQueryIpcEntity query)
+    {
+        return InvokeAsync((c, ct) => c.EvaluateMultiTunnelTraffic(query, ct));
     }
 }
