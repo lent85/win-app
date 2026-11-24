@@ -238,3 +238,11 @@ ModelManifest.xml
 
 # Python
 **/__pycache__
+
+# Release / distribution artifacts
+dist/
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+*.AppImage
