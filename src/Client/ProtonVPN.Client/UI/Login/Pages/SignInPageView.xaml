@@ -86,8 +86,78 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                              Header="{x:Bind ViewModel.Localizer.Get('SignIn_Form_Password')}"
                              IsEnabled="{x:Bind ViewModel.IsSignInFormEnabled}"
                              KeyDown="OnFormBoxKeyDown"
+                             PasswordRevealMode="Hidden"
                              Style="{StaticResource ValidationPasswordBoxStyle}" 
                              Visibility="{x:Bind ViewModel.IsSrpFormType, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6"
+                            Visibility="{x:Bind ViewModel.IsSrpFormType, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <CheckBox Content="Remember encrypted credentials"
+                              IsChecked="{x:Bind ViewModel.IsRememberCredentialsEnabled, Mode=TwoWay}"
+                              Style="{StaticResource CheckBoxStyle}" />
+                    <CheckBox Content="Auto sign in on launch"
+                              IsEnabled="{x:Bind ViewModel.IsRememberCredentialsEnabled}"
+                              IsChecked="{x:Bind ViewModel.IsAutoSignInWithStoredCredentialsEnabled, Mode=TwoWay}"
+                              Style="{StaticResource CheckBoxStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <custom:GhostButton Grid.Column="0"
+                                            HorizontalAlignment="Left"
+                                            Command="{x:Bind ViewModel.ToggleCentralServerPanelCommand, Mode=OneTime}"
+                                            Content="Central Credential Server (Token)"
+                                            Style="{StaticResource PrimaryGhostButtonStyle}" />
+                        <custom:GhostButton Grid.Column="1"
+                                            HorizontalAlignment="Right"
+                                            Command="{x:Bind ViewModel.ClearSavedCredentialsCommand, Mode=OneTime}"
+                                            Content="Clear saved"
+                                            Visibility="{x:Bind ViewModel.HasSavedCredentials, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Grid>
+                    <Border Padding="12"
+                            Background="{ThemeResource InteractionDefaultColorBrush}"
+                            CornerRadius="8"
+                            Visibility="{x:Bind ViewModel.IsCentralServerPanelExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Spacing="8">
+                            <TextBox Header="Server URL"
+                                     PlaceholderText="http://192.168.1.10:51890"
+                                     Text="{x:Bind ViewModel.CentralServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <PasswordBox Header="Session Token"
+                                         Password="{x:Bind ViewModel.CentralSessionToken, Mode=TwoWay}"
+                                         PasswordRevealMode="Hidden"
+                                         PlaceholderText="pvpn_stk_..." />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <PasswordBox Grid.Column="0"
+                                             Header="Enrollment Code (optional)"
+                                             Password="{x:Bind ViewModel.CentralEnrollmentCode, Mode=TwoWay}"
+                                             PasswordRevealMode="Hidden"
+                                             PlaceholderText="Request token" />
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Bottom"
+                                        Command="{x:Bind ViewModel.RequestCentralTokenCommand, Mode=OneTime}"
+                                        Content="Request Token"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </Grid>
+                            <TextBox Header="Credential Alias / ID (optional)"
+                                     PlaceholderText="Default"
+                                     Text="{x:Bind ViewModel.CentralTargetCredentialId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button HorizontalAlignment="Stretch"
+                                    Command="{x:Bind ViewModel.FetchCentralCredentialCommand, Mode=OneTime}"
+                                    Content="Fetch Credential &amp; Sign in"
+                                    Style="{StaticResource SecondaryButtonStyle}" />
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.CentralStatusMessage}"
+                                       TextWrapping="Wrap"
+                                       Visibility="{x:Bind ViewModel.HasCentralStatusMessage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel Margin="0,8,0,0"

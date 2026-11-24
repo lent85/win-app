@@ -67,5 +67,12 @@ public interface IGlobalSettings
     bool IsEfficiencyModeAllowed { get; set; }
     WindowLocation WindowLocation { get; set; }
 
+    bool IsRememberCredentialsEnabled { get; set; }
+    bool IsAutoSignInWithStoredCredentialsEnabled { get; set; }
+    string? RememberedUsername { get; set; }
+    string? RememberedPassword { get; set; }
+    string? CentralCredentialServerUrl { get; set; }
+    string? CentralCredentialSessionToken { get; set; }
+
     Dictionary<string, Dictionary<string, string?>>? LegacySettingsByUsername { get; set; }
 }

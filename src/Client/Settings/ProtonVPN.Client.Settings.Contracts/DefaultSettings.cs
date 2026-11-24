@@ -61,6 +61,9 @@ public static class DefaultSettings
     public static int[] OpenVpnUdpPorts = [443, 3389, 8080, 8443];
     public static bool IsAutoLaunchEnabled = true;
     public static AutoLaunchMode AutoLaunchMode = AutoLaunchMode.MinimizeToSystemTray;
+    public static bool IsRememberCredentialsEnabled = true;
+    public static bool IsAutoSignInWithStoredCredentialsEnabled = true;
+    public static string CentralCredentialServerUrl = "http://localhost:51890";
     public static bool IsAutoConnectEnabled = true;
     public static bool IsKillSwitchEnabled = false;
     public static bool IsGlobalSettingsMigrationDone = false;

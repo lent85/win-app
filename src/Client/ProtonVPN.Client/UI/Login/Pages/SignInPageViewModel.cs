@@ -30,6 +30,7 @@ using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Auth;
 using ProtonVPN.Client.Logic.Auth.Contracts;
 using ProtonVPN.Client.Logic.Auth.Contracts.Enums;
+using ProtonVPN.Client.Logic.Auth.Contracts.Messages;
 using ProtonVPN.Client.Logic.Auth.Contracts.Models;
 using ProtonVPN.Client.Logic.Connection.Contracts.GuestHole;
 using ProtonVPN.Client.Settings.Contracts;
@@ -43,7 +44,8 @@ using ProtonVPN.Logging.Contracts.Events.UserLogs;
 
 namespace ProtonVPN.Client.UI.Login.Pages;
 
-public partial class SignInPageViewModel : LoginPageViewModelBase
+public partial class SignInPageViewModel : LoginPageViewModelBase,
+    IEventMessageReceiver<LoggedOutMessage>
 {
     private readonly IUrlsBrowser _urlsBrowser;
     private readonly IUserAuthenticator _userAuthenticator;
@@ -51,11 +53,21 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
     private readonly IApiAvailabilityVerifier _apiAvailabilityVerifier;
     private readonly IGuestHoleManager _guestHoleManager;
     private readonly ISessionSettings _sessionSettings;
+    private readonly ISettings _settings;
+    private readonly ICentralCredentialClient _centralCredentialClient;
     private readonly IUnauthSessionManager _unauthSessionManager;
     private readonly SsoLoginOverlayViewModel _ssoLoginOverlayViewModel;
     private readonly IMainWindowViewNavigator _mainWindowViewNavigator;
 
+    private string? _storedActualUsername;
+    private string? _storedActualPassword;
+    private string _maskedStoredUsername = string.Empty;
+    private bool _isApplyingStoredMask;
+    private bool _hasAttemptedStartupAutoSignIn;
+    private bool _suppressAutoSignInAfterLogout;
+
     public event EventHandler? OnPasswordClearRequested;
+    public event EventHandler<string>? OnPasswordSentinelRequested;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
@@ -89,7 +101,47 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
     [ObservableProperty]
     private bool _isToShowPasswordError;
 
+    [ObservableProperty]
+    private bool _isRememberCredentialsEnabled = true;
+
+    [ObservableProperty]
+    private bool _isAutoSignInWithStoredCredentialsEnabled = true;
+
+    [ObservableProperty]
+    private bool _isUsingStoredUsername;
+
+    [ObservableProperty]
+    private bool _isUsingStoredPassword;
+
+    [ObservableProperty]
+    private bool _hasSavedCredentials;
+
+    [ObservableProperty]
+    private bool _isCentralServerPanelExpanded;
+
+    [ObservableProperty]
+    private string _centralServerUrl = DefaultSettings.CentralCredentialServerUrl;
+
+    [ObservableProperty]
+    private string _centralSessionToken = string.Empty;
+
+    [ObservableProperty]
+    private string _centralEnrollmentCode = string.Empty;
+
+    [ObservableProperty]
+    private string _centralTargetCredentialId = string.Empty;
+
+    [ObservableProperty]
+    private string _centralStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RequestCentralTokenCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchCentralCredentialCommand))]
+    private bool _isFetchingCentralCredential;
+
     private AuthError _authError;
+
+    public bool HasCentralStatusMessage => !string.IsNullOrWhiteSpace(CentralStatusMessage);
 
     public bool IsSignInFormEnabled => !IsSigningIn;
 
@@ -126,6 +178,8 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
         IApiAvailabilityVerifier apiAvailabilityVerifier,
         IGuestHoleManager guestHoleManager,
         ISessionSettings sessionSettings,
+        ISettings settings,
+        ICentralCredentialClient centralCredentialClient,
         IUnauthSessionManager unauthSessionManager,
         SsoLoginOverlayViewModel ssoLoginOverlayViewModel,
         IViewModelHelper viewModelHelper,
@@ -138,6 +192,8 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
         _apiAvailabilityVerifier = apiAvailabilityVerifier;
         _guestHoleManager = guestHoleManager;
         _sessionSettings = sessionSettings;
+        _settings = settings;
+        _centralCredentialClient = centralCredentialClient;
         _unauthSessionManager = unauthSessionManager;
         _ssoLoginOverlayViewModel = ssoLoginOverlayViewModel;
         _mainWindowViewNavigator = mainWindowViewNavigator;
@@ -193,12 +249,12 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
         switch (SignInFormType)
         {
             case SignInFormType.SRP:
-                IsToShowUsernameError = string.IsNullOrWhiteSpace(Username);
-                IsToShowPasswordError = Password is null || Password.Length == 0;
+                IsToShowUsernameError = string.IsNullOrWhiteSpace(GetEffectiveUsername());
+                IsToShowPasswordError = !IsUsingStoredPassword && (Password is null || Password.Length == 0);
                 break;
             case SignInFormType.SSO:
-                Username = Username?.Trim() ?? string.Empty;
-                IsToShowUsernameError = string.IsNullOrWhiteSpace(Username) || !Username.IsValidEmailAddress();
+                string effectiveUser = GetEffectiveUsername();
+                IsToShowUsernameError = string.IsNullOrWhiteSpace(effectiveUser) || !effectiveUser.IsValidEmailAddress();
                 break;
         }
 
@@ -212,22 +268,34 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
 
     private async Task<AuthResult> HandleSrpLoginAsync()
     {
-        // Copy password so it can be cleared immediately without affecting the ongoing authentication.
-        SecureString password = Password;
+        string effectiveUsername = GetEffectiveUsername();
+        SecureString effectivePassword = IsUsingStoredPassword && !string.IsNullOrEmpty(_storedActualPassword)
+            ? _storedActualPassword.ToSecureString()
+            : Password;
+
         try
         {
-            return await _userAuthenticator.LoginUserAsync(Username, password);
+            AuthResult result = await _userAuthenticator.LoginUserAsync(effectiveUsername, effectivePassword);
+            if (result.Success)
+            {
+                PersistCredentialsAfterSuccess(effectiveUsername, effectivePassword.ToUnsecureString());
+            }
+
+            return result;
         }
         finally
         {
-            Password = new();
-            OnPasswordClearRequested?.Invoke(this, EventArgs.Empty);
+            if (!IsRememberCredentialsEnabled)
+            {
+                Password = new();
+                OnPasswordClearRequested?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
     private async Task<AuthResult> HandleSsoLoginAsync()
     {
-        SsoAuthResult result = await _userAuthenticator.StartSsoAuthAsync(Username);
+        SsoAuthResult result = await _userAuthenticator.StartSsoAuthAsync(GetEffectiveUsername());
 
         return result.Success
             ? await _ssoLoginOverlayViewModel.AuthenticateAsync(result.SsoChallengeToken)
@@ -331,11 +399,156 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
         }
     }
 
+    public void Receive(LoggedOutMessage message)
+    {
+        _suppressAutoSignInAfterLogout = true;
+    }
+
+    public void OnUserEditedPassword(SecureString newPassword)
+    {
+        if (_isApplyingStoredMask)
+        {
+            return;
+        }
+
+        IsUsingStoredPassword = false;
+        _storedActualPassword = null;
+        Password = newPassword;
+    }
+
+    [RelayCommand]
+    private void ToggleCentralServerPanel()
+    {
+        IsCentralServerPanelExpanded = !IsCentralServerPanelExpanded;
+    }
+
+    [RelayCommand]
+    private void ClearSavedCredentials()
+    {
+        _settings.RememberedUsername = null;
+        _settings.RememberedPassword = null;
+        _settings.CentralCredentialSessionToken = null;
+        _isApplyingStoredMask = true;
+        try
+        {
+            _storedActualUsername = null;
+            _storedActualPassword = null;
+            _maskedStoredUsername = string.Empty;
+            IsUsingStoredUsername = false;
+            IsUsingStoredPassword = false;
+            HasSavedCredentials = false;
+            Username = string.Empty;
+            Password = new();
+            CentralSessionToken = string.Empty;
+            CentralStatusMessage = string.Empty;
+            OnPasswordClearRequested?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            _isApplyingStoredMask = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanFetchCentralCredential))]
+    private async Task RequestCentralTokenAsync()
+    {
+        try
+        {
+            IsFetchingCentralCredential = true;
+            CentralStatusMessage = string.Empty;
+
+            CentralTokenIssueResult res = await _centralCredentialClient.RequestSessionTokenAsync(
+                CentralServerUrl,
+                CentralEnrollmentCode,
+                CentralTargetCredentialId);
+
+            if (!res.Success || string.IsNullOrWhiteSpace(res.SessionToken))
+            {
+                CentralStatusMessage = res.Error ?? "Failed to request session token.";
+                return;
+            }
+
+            CentralSessionToken = res.SessionToken;
+            _settings.CentralCredentialServerUrl = CentralServerUrl.Trim();
+            _settings.CentralCredentialSessionToken = res.SessionToken;
+            CentralStatusMessage = $"Token ready for {res.MaskedUsername} (expires {res.ExpiresAtUtc:HH:mm dd MMM} UTC)";
+        }
+        finally
+        {
+            IsFetchingCentralCredential = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanFetchCentralCredential))]
+    private async Task FetchCentralCredentialAsync()
+    {
+        try
+        {
+            IsFetchingCentralCredential = true;
+            CentralStatusMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(CentralSessionToken) && !string.IsNullOrWhiteSpace(CentralEnrollmentCode))
+            {
+                CentralTokenIssueResult issued = await _centralCredentialClient.RequestSessionTokenAsync(
+                    CentralServerUrl,
+                    CentralEnrollmentCode,
+                    CentralTargetCredentialId);
+
+                if (!issued.Success || string.IsNullOrWhiteSpace(issued.SessionToken))
+                {
+                    CentralStatusMessage = issued.Error ?? "Failed to request session token.";
+                    return;
+                }
+
+                CentralSessionToken = issued.SessionToken;
+            }
+
+            CentralCredentialFetchResult fetched = await _centralCredentialClient.FetchCredentialAsync(
+                CentralServerUrl,
+                CentralSessionToken);
+
+            if (!fetched.Success || string.IsNullOrWhiteSpace(fetched.Username) || string.IsNullOrEmpty(fetched.Password))
+            {
+                CentralStatusMessage = fetched.Error ?? "Failed to fetch credential from central server.";
+                return;
+            }
+
+            _settings.CentralCredentialServerUrl = CentralServerUrl.Trim();
+            _settings.CentralCredentialSessionToken = CentralSessionToken.Trim();
+            IsRememberCredentialsEnabled = true;
+            PersistCredentialsAfterSuccess(fetched.Username, fetched.Password);
+            LoadStoredMaskedCredentials();
+            CentralStatusMessage = $"Loaded encrypted credential ({fetched.MaskedUsername}). Signing in...";
+
+            if (SignInCommand.CanExecute(null))
+            {
+                await SignInAsync();
+            }
+        }
+        finally
+        {
+            IsFetchingCentralCredential = false;
+        }
+    }
+
+    private bool CanFetchCentralCredential() => !IsFetchingCentralCredential;
+
     protected override void OnActivated()
     {
         base.OnActivated();
 
         _unauthSessionManager.Revoke();
+
+        IsRememberCredentialsEnabled = _settings.IsRememberCredentialsEnabled;
+        IsAutoSignInWithStoredCredentialsEnabled = _settings.IsAutoSignInWithStoredCredentialsEnabled;
+        if (!string.IsNullOrWhiteSpace(_settings.CentralCredentialServerUrl))
+        {
+            CentralServerUrl = _settings.CentralCredentialServerUrl!;
+        }
+        if (!string.IsNullOrWhiteSpace(_settings.CentralCredentialSessionToken))
+        {
+            CentralSessionToken = _settings.CentralCredentialSessionToken!;
+        }
 
         if (_userAuthenticator.IsAutoLogin != true && SignInCommand.CanExecute(null))
         {
@@ -343,13 +556,153 @@ public partial class SignInPageViewModel : LoginPageViewModelBase
             {
                 Username = _sessionSettings.Username.Trim();
 
-                if (!string.IsNullOrEmpty(_sessionSettings.Password)) 
+                if (!string.IsNullOrEmpty(_sessionSettings.Password))
                 {
                     Password = _sessionSettings.Password.Trim().ToSecureString();
 
                     SignInCommand.Execute(null);
+                    return;
                 }
             }
+
+            LoadStoredMaskedCredentials();
+
+            bool shouldAutoSignInOnLaunch = !_suppressAutoSignInAfterLogout
+                && !_hasAttemptedStartupAutoSignIn
+                && IsAutoSignInWithStoredCredentialsEnabled
+                && IsRememberCredentialsEnabled
+                && IsUsingStoredUsername
+                && IsUsingStoredPassword;
+
+            _hasAttemptedStartupAutoSignIn = true;
+            _suppressAutoSignInAfterLogout = false;
+
+            if (shouldAutoSignInOnLaunch)
+            {
+                SignInCommand.Execute(null);
+            }
+        }
+    }
+
+    partial void OnUsernameChanged(string value)
+    {
+        if (_isApplyingStoredMask)
+        {
+            return;
+        }
+
+        if (IsUsingStoredUsername && !string.Equals(value, _maskedStoredUsername, StringComparison.Ordinal))
+        {
+            IsUsingStoredUsername = false;
+            _storedActualUsername = null;
+            _maskedStoredUsername = string.Empty;
+
+            if (IsUsingStoredPassword)
+            {
+                _isApplyingStoredMask = true;
+                try
+                {
+                    IsUsingStoredPassword = false;
+                    _storedActualPassword = null;
+                    Password = new();
+                    OnPasswordClearRequested?.Invoke(this, EventArgs.Empty);
+                }
+                finally
+                {
+                    _isApplyingStoredMask = false;
+                }
+            }
+        }
+    }
+
+    partial void OnIsRememberCredentialsEnabledChanged(bool value)
+    {
+        _settings.IsRememberCredentialsEnabled = value;
+        if (!value)
+        {
+            IsAutoSignInWithStoredCredentialsEnabled = false;
+        }
+    }
+
+    partial void OnIsAutoSignInWithStoredCredentialsEnabledChanged(bool value)
+    {
+        _settings.IsAutoSignInWithStoredCredentialsEnabled = value;
+    }
+
+    partial void OnCentralStatusMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasCentralStatusMessage));
+    }
+
+    private string GetEffectiveUsername()
+    {
+        return IsUsingStoredUsername && !string.IsNullOrWhiteSpace(_storedActualUsername)
+            ? _storedActualUsername.Trim()
+            : Username?.Trim() ?? string.Empty;
+    }
+
+    private void PersistCredentialsAfterSuccess(string actualUsername, string actualPassword)
+    {
+        _settings.IsRememberCredentialsEnabled = IsRememberCredentialsEnabled;
+        _settings.IsAutoSignInWithStoredCredentialsEnabled = IsAutoSignInWithStoredCredentialsEnabled;
+
+        if (IsRememberCredentialsEnabled && !string.IsNullOrWhiteSpace(actualUsername) && !string.IsNullOrEmpty(actualPassword))
+        {
+            _settings.RememberedUsername = actualUsername.Trim();
+            _settings.RememberedPassword = actualPassword;
+            LoadStoredMaskedCredentials();
+        }
+        else if (!IsRememberCredentialsEnabled)
+        {
+            _settings.RememberedUsername = null;
+            _settings.RememberedPassword = null;
+            HasSavedCredentials = false;
+        }
+    }
+
+    private void LoadStoredMaskedCredentials()
+    {
+        string? savedUser = _settings.RememberedUsername;
+        string? savedPass = _settings.RememberedPassword;
+
+        _isApplyingStoredMask = true;
+        try
+        {
+            if (IsRememberCredentialsEnabled && !string.IsNullOrWhiteSpace(savedUser))
+            {
+                _storedActualUsername = savedUser.Trim();
+                _maskedStoredUsername = CredentialMasking.MaskAccount(_storedActualUsername);
+                IsUsingStoredUsername = true;
+                Username = _maskedStoredUsername;
+            }
+            else
+            {
+                _storedActualUsername = null;
+                _maskedStoredUsername = string.Empty;
+                IsUsingStoredUsername = false;
+                Username = string.Empty;
+            }
+
+            if (IsRememberCredentialsEnabled && !string.IsNullOrEmpty(savedPass) && IsUsingStoredUsername)
+            {
+                _storedActualPassword = savedPass;
+                IsUsingStoredPassword = true;
+                Password = new();
+                OnPasswordSentinelRequested?.Invoke(this, CredentialMasking.MaskedPasswordSentinel);
+            }
+            else
+            {
+                _storedActualPassword = null;
+                IsUsingStoredPassword = false;
+                Password = new();
+                OnPasswordClearRequested?.Invoke(this, EventArgs.Empty);
+            }
+
+            HasSavedCredentials = IsUsingStoredUsername || IsUsingStoredPassword;
+        }
+        finally
+        {
+            _isApplyingStoredMask = false;
         }
     }
 

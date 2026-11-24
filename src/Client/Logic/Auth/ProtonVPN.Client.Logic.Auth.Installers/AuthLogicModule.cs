@@ -37,5 +37,6 @@ public class AuthLogicModule : Module
         builder.RegisterType<UserHashGenerator>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<WebAuthenticator>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<UserSession>().AsImplementedInterfaces().SingleInstance();
+        builder.RegisterType<CentralCredentialClient>().AsImplementedInterfaces().SingleInstance();
     }
 }

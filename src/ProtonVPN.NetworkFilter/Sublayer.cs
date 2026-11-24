@@ -214,6 +214,66 @@ namespace ProtonVPN.NetworkFilter
             return filterId;
         }
 
+        // CUSTOM-MULTI: Bind a remote IPv4/IPv6 CIDR subnet to a Callout & ProviderContext (T1..T5 or Direct)
+        public Guid CreateRemoteNetworkCalloutFilter(
+            DisplayData displayData,
+            Layer layer,
+            uint weight,
+            Callout callout,
+            ProviderContext providerContext,
+            NetworkAddress addr,
+            bool persistent = false,
+            Guid id = new())
+        {
+            Guid filterId = IpFilterNative.CreateRemoteNetworkIPFilter(
+                Session.Handle,
+                ProviderId,
+                Id,
+                displayData,
+                layer,
+                Action.Callout,
+                weight,
+                callout.Id,
+                providerContext.Id,
+                addr,
+                persistent,
+                id);
+
+            AddFilter(filterId);
+
+            return filterId;
+        }
+
+        // CUSTOM-MULTI: Bind a specific remote IPv4 address (e.g. DNS-resolved domain IP) to a Callout & ProviderContext
+        public Guid CreateRemoteIPv4CalloutFilter(
+            DisplayData displayData,
+            Layer layer,
+            uint weight,
+            Callout callout,
+            ProviderContext providerContext,
+            string address,
+            bool persistent = false,
+            Guid id = new())
+        {
+            Guid filterId = IpFilterNative.CreateRemoteIPv4Filter(
+                Session.Handle,
+                ProviderId,
+                Id,
+                displayData,
+                layer,
+                Action.Callout,
+                weight,
+                callout.Id,
+                providerContext.Id,
+                address,
+                persistent,
+                id);
+
+            AddFilter(filterId);
+
+            return filterId;
+        }
+
         public Guid CreateRemoteUdpPortFilter(
             DisplayData displayData,
             Action action,

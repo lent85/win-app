@@ -280,6 +280,42 @@ public class GlobalSettings : TransientSettings, IGlobalSettings
         set => _globalCache.SetValueType<WindowLocation>(value, SettingEncryption.Unencrypted);
     }
 
+    public bool IsRememberCredentialsEnabled
+    {
+        get => _globalCache.GetValueType<bool>(SettingEncryption.Encrypted) ?? DefaultSettings.IsRememberCredentialsEnabled;
+        set => _globalCache.SetValueType<bool>(value, SettingEncryption.Encrypted);
+    }
+
+    public bool IsAutoSignInWithStoredCredentialsEnabled
+    {
+        get => _globalCache.GetValueType<bool>(SettingEncryption.Encrypted) ?? DefaultSettings.IsAutoSignInWithStoredCredentialsEnabled;
+        set => _globalCache.SetValueType<bool>(value, SettingEncryption.Encrypted);
+    }
+
+    public string? RememberedUsername
+    {
+        get => _globalCache.GetReferenceType<string>(SettingEncryption.Encrypted);
+        set => _globalCache.SetReferenceType(value, SettingEncryption.Encrypted);
+    }
+
+    public string? RememberedPassword
+    {
+        get => _globalCache.GetReferenceType<string>(SettingEncryption.Encrypted);
+        set => _globalCache.SetReferenceType(value, SettingEncryption.Encrypted);
+    }
+
+    public string? CentralCredentialServerUrl
+    {
+        get => _globalCache.GetReferenceType<string>(SettingEncryption.Encrypted);
+        set => _globalCache.SetReferenceType(value, SettingEncryption.Encrypted);
+    }
+
+    public string? CentralCredentialSessionToken
+    {
+        get => _globalCache.GetReferenceType<string>(SettingEncryption.Encrypted);
+        set => _globalCache.SetReferenceType(value, SettingEncryption.Encrypted);
+    }
+
     public GlobalSettings(IGlobalSettingsCache globalSettingsCache)
     {
         _globalCache = globalSettingsCache;

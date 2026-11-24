@@ -28,6 +28,8 @@ namespace ProtonVPN.Client.UI.Login.Pages;
 
 public sealed partial class SignInPageView : IContextAware
 {
+    private bool _isApplyingSentinel;
+
     public SignInPageViewModel ViewModel { get; }
 
     public SignInPageView()
@@ -41,6 +43,7 @@ public sealed partial class SignInPageView : IContextAware
         UsernameTextBox.Loaded += OnUsernameTextBoxLoaded;
         PasswordBox.PasswordChanged += OnPasswordChanged;
         ViewModel.OnPasswordClearRequested += OnPasswordClearRequested;
+        ViewModel.OnPasswordSentinelRequested += OnPasswordSentinelRequested;
     }
 
     public object GetContext()
@@ -60,7 +63,28 @@ public sealed partial class SignInPageView : IContextAware
 
     private void OnPasswordClearRequested(object? sender, EventArgs e)
     {
-        PasswordBox.Password = string.Empty;
+        _isApplyingSentinel = true;
+        try
+        {
+            PasswordBox.Password = string.Empty;
+        }
+        finally
+        {
+            _isApplyingSentinel = false;
+        }
+    }
+
+    private void OnPasswordSentinelRequested(object? sender, string sentinel)
+    {
+        _isApplyingSentinel = true;
+        try
+        {
+            PasswordBox.Password = sentinel;
+        }
+        finally
+        {
+            _isApplyingSentinel = false;
+        }
     }
 
     private void OnUsernameTextBoxLoaded(object sender, RoutedEventArgs e)
@@ -84,6 +108,11 @@ public sealed partial class SignInPageView : IContextAware
 
     private void OnPasswordChanged(object sender, RoutedEventArgs e)
     {
-        ViewModel.Password = PasswordBox.Password.ToSecureString();
+        if (_isApplyingSentinel)
+        {
+            return;
+        }
+
+        ViewModel.OnUserEditedPassword(PasswordBox.Password.ToSecureString());
     }
 }
