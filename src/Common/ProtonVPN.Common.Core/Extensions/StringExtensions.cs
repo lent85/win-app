@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -19,6 +19,7 @@
 
 using System.Globalization;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -372,6 +373,28 @@ public static class StringExtensions
         secureString.MakeReadOnly();
 
         return secureString;
+    }
+
+    public static string ToUnsecureString(this SecureString? value)
+    {
+        if (value is null || value.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        IntPtr unmanagedString = IntPtr.Zero;
+        try
+        {
+            unmanagedString = Marshal.SecureStringToGlobalAllocUnicode(value);
+            return Marshal.PtrToStringUni(unmanagedString) ?? string.Empty;
+        }
+        finally
+        {
+            if (unmanagedString != IntPtr.Zero)
+            {
+                Marshal.ZeroFreeGlobalAllocUnicode(unmanagedString);
+            }
+        }
     }
 
     public static string NormalizeCountryCode(this string countryCode)

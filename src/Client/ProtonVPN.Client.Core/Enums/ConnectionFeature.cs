@@ -24,5 +24,6 @@ public enum ConnectionFeature
     NetShield,
     KillSwitch,
     PortForwarding,
-    SplitTunneling
+    SplitTunneling,
+    MultiTunnel
 }

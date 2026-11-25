@@ -26,6 +26,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:ks="using:ProtonVPN.Client.UI.Main.Features.KillSwitch"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:mt="using:ProtonVPN.Client.UI.Main.Features.MultiTunnel"
              xmlns:ns="using:ProtonVPN.Client.UI.Main.Features.NetShield"
              xmlns:pf="using:ProtonVPN.Client.UI.Main.Features.PortForwarding"
              xmlns:selectors="using:ProtonVPN.Client.Selectors"
@@ -47,6 +48,10 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
         <DataTemplate x:Key="SplitTunnelingWidgetItemTemplate"
                       x:DataType="st:SplitTunnelingWidgetViewModel">
             <st:SplitTunnelingWidgetView />
+        </DataTemplate>
+        <DataTemplate x:Key="MultiTunnelWidgetItemTemplate"
+                      x:DataType="mt:MultiTunnelWidgetViewModel">
+            <mt:MultiTunnelWidgetView />
         </DataTemplate>
         <DataTemplate x:Key="KillSwitchWidgetItemTemplate"
                       x:DataType="ks:KillSwitchWidgetViewModel">
@@ -71,6 +76,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                                                   NetShieldWidgetTemplate="{StaticResource NetShieldWidgetItemTemplate}"
                                                   PortForwardingWidgetTemplate="{StaticResource PortForwardingWidgetItemTemplate}"
                                                   SettingsWidgetTemplate="{StaticResource SettingsWidgetItemTemplate}"
+                                                  MultiTunnelWidgetTemplate="{StaticResource MultiTunnelWidgetItemTemplate}"
                                                   SplitTunnelingWidgetTemplate="{StaticResource SplitTunnelingWidgetItemTemplate}" />
 
     </UserControl.Resources>

@@ -106,13 +106,14 @@ public sealed partial class HomeComponentView : IContextAware
         ViewModel.Activate();
         DetailsComponent.SizeChanged += InvalidateMapOffsets;
         ConnectionCardComponent.SizeChanged += InvalidateMapOffsets;
+        MultiTunnelHomePanel.SizeChanged += InvalidateMapOffsets;
         BannersContainer.SizeChanged += InvalidateMapOffsets;
     }
 
     private void InvalidateMapOffsets(object sender, SizeChangedEventArgs e)
     {
         MapBottomOffset = DetailsComponent.ActualHeight + BannersContainer.ActualHeight;
-        MapTopOffset = ConnectionCardComponent.ActualHeight;
+        MapTopOffset = ConnectionCardComponent.ActualHeight + MultiTunnelHomePanel.ActualHeight;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -120,6 +121,7 @@ public sealed partial class HomeComponentView : IContextAware
         ViewModel.Deactivate();
         DetailsComponent.SizeChanged -= InvalidateMapOffsets;
         ConnectionCardComponent.SizeChanged -= InvalidateMapOffsets;
+        MultiTunnelHomePanel.SizeChanged -= InvalidateMapOffsets;
         BannersContainer.SizeChanged -= InvalidateMapOffsets;
     }
 }

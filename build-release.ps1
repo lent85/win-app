@@ -130,6 +130,7 @@ try {
                 -c $Configuration `
                 -r $Rid `
                 -p:Platform=$Platform `
+                -p:AppendRuntimeIdentifierToOutputPath=true `
                 --self-contained true `
                 -o $PublishDir
             if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Proj" }
@@ -167,8 +168,11 @@ try {
         foreach ($Tp in $TestProjects) {
             $TpPath = Join-Path $RepoRoot $Tp
             if (Test-Path $TpPath) {
+                $TestName = [System.IO.Path]::GetFileNameWithoutExtension($Tp)
+                $TestOutDir = Join-Path $RepoRoot "src\bin\tests\$TestName"
+                if (Test-Path $TestOutDir) { Remove-Item -Recurse -Force $TestOutDir }
                 Write-Host "==> Testing $Tp..."
-                dotnet test $TpPath -c $Configuration
+                dotnet test $TpPath -c $Configuration -o $TestOutDir
                 if ($LASTEXITCODE -ne 0) { throw "dotnet test failed for $Tp" }
             }
         }
@@ -188,6 +192,7 @@ try {
         $IsccCandidates = @(
             "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
             "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
             (Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue)
         ) | Where-Object { $_ -and (Test-Path $_) }
 

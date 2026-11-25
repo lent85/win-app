@@ -68,6 +68,7 @@ public class SettingsViewNavigator : ViewNavigatorBase, ISettingsViewNavigator,
             ConnectionFeature.KillSwitch => NavigateToKillSwitchSettingsViewAsync(isDirectNavigation),
             ConnectionFeature.PortForwarding => NavigateToPortForwardingSettingsViewAsync(isDirectNavigation),
             ConnectionFeature.SplitTunneling => NavigateToSplitTunnelingSettingsViewAsync(isDirectNavigation),
+            ConnectionFeature.MultiTunnel => NavigateToMultiTunnelSettingsViewAsync(isDirectNavigation),
             _ => Task.FromResult(false),
         };
     }

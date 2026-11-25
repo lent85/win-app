@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+Copyright (c) 2026 Proton AG
+
+This file is part of ProtonVPN.
+
+ProtonVPN is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+-->
+
+<UserControl x:Class="ProtonVPN.Client.UI.Main.Features.MultiTunnel.MultiTunnelWidgetView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conn="using:ProtonVPN.Client.UI.Main.Settings.Pages.Connection"
+             xmlns:custom="using:ProtonVPN.Client.Common.UI.Controls.Custom"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:DefaultBindMode="OneWay"
+             mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Flyout x:Name="WidgetFlyout"
+                Closed="OnWidgetFlyoutClosed"
+                Opened="OnWidgetFlyoutOpened">
+            <StackPanel Width="{StaticResource FeatureFlyoutWidth}"
+                        Orientation="Vertical"
+                        Spacing="12">
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0"
+                                Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.Header}" />
+                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.SummaryText}" />
+                    </StackPanel>
+
+                    <ToggleSwitch Grid.Column="1"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.AutomationId="MultiTunnelWidgetToggleSwitch"
+                                  IsOn="{x:Bind ViewModel.IsMultiTunnelEnabled, Mode=TwoWay}"
+                                  Style="{StaticResource ToggleSwitchStyle}" />
+                </Grid>
+
+                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Text="Turn on Multi-Tunnel to manage pipelines (T1–T5) and priority rules directly on the Home screen."
+                           TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.IsMultiTunnelEnabled, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+
+                <Border Height="1"
+                        Background="{ThemeResource BorderWeakColorBrush}" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextWeakColorBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="Default Policy" />
+                    <ComboBox Grid.Column="1"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
+                              SelectedItem="{x:Bind ViewModel.SelectedDefaultTargetType, Mode=TwoWay}"
+                              Style="{StaticResource ComboBoxStyle}" />
+                    <ComboBox Grid.Column="2"
+                              Width="76"
+                              ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                              SelectedItem="{x:Bind ViewModel.SelectedDefaultTunnelId, Mode=TwoWay}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              Visibility="{x:Bind ViewModel.IsDefaultTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </Grid>
+
+                <StackPanel Spacing="6"
+                            Visibility="{x:Bind ViewModel.IsMultiTunnelEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="Active Pipelines (T1 - T5)" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Slots}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="conn:MultiTunnelSlotItem">
+                                <Border Margin="0,2,0,0"
+                                        Padding="10,6"
+                                        Background="{ThemeResource InteractionDefaultColorBrush}"
+                                        BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Grid Grid.Column="0"
+                                              VerticalAlignment="Center">
+                                            <Ellipse Width="7"
+                                                     Height="7"
+                                                     Fill="{ThemeResource TextWeakColorBrush}"
+                                                     Opacity="0.45" />
+                                            <Ellipse Width="7"
+                                                     Height="7"
+                                                     Fill="{ThemeResource SignalSuccessColorBrush}"
+                                                     Visibility="{x:Bind IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </Grid>
+
+                                        <TextBlock Grid.Column="1"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Text="{x:Bind SlotId}" />
+
+                                        <custom:SimpleCountryFlag Grid.Column="2"
+                                                                  Width="20"
+                                                                  VerticalAlignment="Center"
+                                                                  CountryCode="{x:Bind CountryCode}"
+                                                                  FlagType="Country" />
+
+                                        <TextBlock Grid.Column="3"
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind SlotSummary}"
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                        <Button Grid.Column="4"
+                                                Padding="8,4"
+                                                Click="OnConnectSlotClick"
+                                                Content="Connect"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{x:Bind SlotId}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <Button HorizontalAlignment="Stretch"
+                        Command="{x:Bind ViewModel.OpenFullSettingsCommand, Mode=OneTime}"
+                        Content="Open Full Config &amp; Simulator"
+                        Style="{StaticResource SecondaryButtonStyle}" />
+            </StackPanel>
+        </Flyout>
+    </UserControl.Resources>
+
+    <custom:WidgetButton x:Name="WidgetButton"
+                         AutomationProperties.AutomationId="MultiTunnelWidgetButton"
+                         Command="{x:Bind ViewModel.InvokeCommand, Mode=OneTime}"
+                         IsActive="{x:Bind ViewModel.IsSelected}"
+                         OnHoverFlyout="{StaticResource WidgetFlyout}"
+                         Style="{StaticResource SideWidgetButtonStyle}"
+                         Text="{x:Bind ViewModel.Header}"
+                         Visibility="{x:Bind ViewModel.IsAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid Width="24"
+              Height="24">
+            <FontIcon HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      FontSize="20"
+                      Glyph="&#xE8AB;" />
+            <Ellipse Width="7"
+                     Height="7"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Top"
+                     Fill="{ThemeResource SignalSuccessColorBrush}"
+                     Visibility="{x:Bind ViewModel.IsMultiTunnelEnabled, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        </Grid>
+    </custom:WidgetButton>
+
+</UserControl>
