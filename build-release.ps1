@@ -107,7 +107,25 @@ try {
             & cmd.exe /c "`"$RepoRoot\BuildDependencies.bat`" $arg"
             if ($LASTEXITCODE -ne 0) { throw "BuildDependencies.bat failed with exit code $LASTEXITCODE" }
         } else {
-            Write-Warning "DEPENDENCY_CACHE_URL is not set; skipped downloading external C++/Rust binaries (IPFilter, LocalAgent, SRP)."
+            Write-Warning "DEPENDENCY_CACHE_URL is not set; checking local Proton VPN installation for prebuilt C++/Rust binaries."
+            $InstalledDir = Get-ChildItem "C:\Program Files\Proton\VPN" -Directory -Filter "v*" -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+            if ($InstalledDir) {
+                Write-Host "==> Staging prebuilt C++/Rust binaries from $InstalledDir..."
+                Copy-Item "$InstalledDir\ProtonVPN.InstallActions.dll" "$ResourcesDir\ProtonVPN.InstallActions.dll" -Force -ErrorAction SilentlyContinue
+                Copy-Item "$InstalledDir\Resources\ProtonVPN.InstallActions.x86.dll","$InstalledDir\Resources\ProtonVPN.IPFilter.dll","$InstalledDir\Resources\ProtonVPN.NetworkUtil.dll","$InstalledDir\Resources\LocalAgent.dll" -Destination $ResourcesDir -Force -ErrorAction SilentlyContinue
+                Copy-Item "$InstalledDir\proton_vpn_ipv6chaos.dll","$InstalledDir\proton_srp_cffi.dll","$InstalledDir\proton_vpn_binary_status.dll" -Destination $PublishDir -Force -ErrorAction SilentlyContinue
+                $PrefixTreeSrc = Join-Path $InstalledDir "ServiceData\IPv6\PrefixTree.bin"
+                $DataDir = Join-Path $RepoRoot "data"
+                $PrefixTreeDst = Join-Path $DataDir "ipv6_chaos_prefixtree.bin"
+                if ((Test-Path $PrefixTreeSrc) -and -not (Test-Path $PrefixTreeDst)) {
+                    New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+                    Copy-Item $PrefixTreeSrc $PrefixTreeDst -Force
+                }
+            } else {
+                Write-Warning "No local Proton VPN installation found; skipped external C++/Rust binaries (IPFilter, LocalAgent, SRP)."
+            }
         }
     }
 

@@ -66,7 +66,9 @@ VersionInfoProductTextVersion={#MyAppVersion}-{#hash}
 VersionInfoVersion={#MyAppVersion}
 AppCopyright=© 2022 {#MyPublisher}
 
-SignTool=signtool sign /a /tr http://timestamp.sectigo.com /td SHA256 /fd SHA256 $f
+#ifdef EnableSigning
+SignTool=signtool
+#endif
 
 [Messages]
 SetupWindowTitle={#MyAppName}
