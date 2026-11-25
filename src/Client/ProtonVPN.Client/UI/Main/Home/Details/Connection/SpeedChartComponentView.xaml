@@ -20,18 +20,19 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses />.
 
 <UserControl x:Class="ProtonVPN.Client.UI.Main.Home.Details.Connection.SpeedChartComponentView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="using:ProtonVPN.Client.UI.Main.Home.Details.Connection"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:pathicons="using:ProtonVPN.Client.Common.UI.Assets.Icons.PathIcons"
-             xmlns:local="using:ProtonVPN.Client.UI.Main.Home.Details.Connection"
              x:DefaultBindMode="OneWay"
              mc:Ignorable="d">
 
     <Grid ColumnSpacing="8"
-          RowSpacing="8">
+          RowSpacing="6">
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -77,7 +78,39 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses />.
             </StackPanel>
         </StackPanel>
 
-        <local:SpeedChartControl Grid.Row="1"
+        <!-- Per-tunnel color legend when Multi-Tunnel is active -->
+        <ItemsControl Grid.Row="1"
+                      Grid.Column="0"
+                      Grid.ColumnSpan="2"
+                      ItemsSource="{x:Bind ViewModel.SlotLegends}"
+                      Visibility="{x:Bind ViewModel.IsMultiTunnelChartActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:SlotTrafficLegendItem">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="5">
+                        <Ellipse Width="8"
+                                 Height="8"
+                                 VerticalAlignment="Center"
+                                 Fill="{x:Bind ColorBrush}" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Style="{StaticResource CaptionStrongTextBlockStyle}"
+                                   Text="{x:Bind Label}" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind DownloadText}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <local:SpeedChartControl Grid.Row="2"
                                  Grid.Column="0"
                                  Grid.ColumnSpan="2"
                                  Height="70"
@@ -85,6 +118,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses />.
                                  FlowDirection="LeftToRight"
                                  LowerBound="{x:Bind ViewModel.LowerBound}"
                                  Midpoint="{x:Bind ViewModel.Midpoint}"
+                                 SlotSeries="{x:Bind ViewModel.SlotSeries}"
                                  UploadSpeedHistory="{x:Bind ViewModel.UploadSpeedHistory}"
                                  UpperBound="{x:Bind ViewModel.UpperBound}" />
 

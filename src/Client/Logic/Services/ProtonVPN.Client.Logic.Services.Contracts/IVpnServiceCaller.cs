@@ -46,4 +46,5 @@ public interface IVpnServiceCaller
     Task<Result<RoutingDecisionIpcEntity>> EvaluateMultiTunnelTrafficAsync(TrafficQueryIpcEntity query);
     Task<Result<MultiTunnelSlotConnectionResultIpcEntity>> ConnectMultiTunnelSlotAsync(MultiTunnelSlotConnectionRequestIpcEntity request);
     Task DisconnectMultiTunnelSlotAsync(string slotId);
+    Task<Result<MultiTunnelTrafficSnapshotIpcEntity>> GetMultiTunnelNetworkTrafficAsync();
 }

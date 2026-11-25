@@ -24,6 +24,7 @@ public interface IMultiTunnelService
     RoutingDecisionIpcEntity EvaluateTraffic(TrafficQueryIpcEntity query);
     Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(MultiTunnelSlotConnectionRequestIpcEntity request, CancellationToken cancelToken);
     Task DisconnectSlotAsync(string slotId, CancellationToken cancelToken);
+    MultiTunnelTrafficSnapshotIpcEntity GetTrafficSnapshot(NetworkTraffic primaryTraffic);
     void OnVpnConnected(VpnState state);
     void OnVpnDisconnected(VpnState state, bool isReconnecting);
     void OnServiceStop();

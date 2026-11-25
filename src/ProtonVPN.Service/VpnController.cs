@@ -220,4 +220,9 @@ public class VpnController : IVpnController
         Ensure.NotNull(request, nameof(request));
         return _multiTunnelService.DisconnectSlotAsync(request.SlotId, cancelToken);
     }
+
+    public Task<MultiTunnelTrafficSnapshotIpcEntity> GetMultiTunnelNetworkTraffic(CancellationToken cancelToken)
+    {
+        return Task.FromResult(_multiTunnelService.GetTrafficSnapshot(_tunnelOrchestrator.NetworkTraffic));
+    }
 }

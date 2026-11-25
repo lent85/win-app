@@ -34,8 +34,48 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
       NavigationCacheMode="Required"
       mc:Ignorable="d">
 
-    <Grid x:Name="LayoutRoot"
-          ColumnSpacing="12">
+    <Grid RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ItemsControl Grid.Row="0"
+                      ItemsSource="{x:Bind ViewModel.MetricSlotTabs}"
+                      Visibility="{x:Bind ViewModel.IsMultiTunnelMetricsBarVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="6" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="connection:ConnectionMetricSlotTab">
+                    <Button Padding="10,4"
+                            BorderBrush="{x:Bind DotBrush}"
+                            BorderThickness="{x:Bind SelectedBorderThickness}"
+                            Click="OnMetricSlotTabClick"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Tag="{x:Bind SlotId}">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="6">
+                            <Ellipse Width="8"
+                                     Height="8"
+                                     VerticalAlignment="Center"
+                                     Fill="{x:Bind DotBrush}"
+                                     Visibility="{x:Bind ShowDot, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <TextBlock VerticalAlignment="Center"
+                                       Style="{StaticResource CaptionStrongTextBlockStyle}"
+                                       Text="{x:Bind Label}" />
+                        </StackPanel>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid x:Name="LayoutRoot"
+              Grid.Row="1"
+              ColumnSpacing="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -181,6 +221,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                 <VisualState x:Name="Default" />
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
+        </Grid>
     </Grid>
 
 </Page>

@@ -108,4 +108,9 @@ public class VpnServiceCaller : ServiceCallerBase<IVpnController>, IVpnServiceCa
         return InvokeAsync((c, ct) => c.DisconnectMultiTunnelSlot(
             new MultiTunnelSlotDisconnectionRequestIpcEntity { SlotId = slotId }, ct).Wrap());
     }
+
+    public Task<Result<MultiTunnelTrafficSnapshotIpcEntity>> GetMultiTunnelNetworkTrafficAsync()
+    {
+        return InvokeAsync((c, ct) => c.GetMultiTunnelNetworkTraffic(ct));
+    }
 }

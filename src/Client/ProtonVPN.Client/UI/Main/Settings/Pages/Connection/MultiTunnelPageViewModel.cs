@@ -12,6 +12,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Xaml.Media;
 using ProtonVPN.Client.Core.Bases;
 using ProtonVPN.Client.Core.Services.Activation;
 using ProtonVPN.Client.Core.Services.Navigation;
@@ -26,6 +27,7 @@ using ProtonVPN.Client.Logic.Servers.Contracts.Messages;
 using ProtonVPN.Client.Logic.Servers.Contracts.Models;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
+using ProtonVPN.Client.UI.Main.Home.Details.Connection;
 using ProtonVPN.Client.UI.Main.Settings.Bases;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
@@ -51,7 +53,11 @@ public sealed class MultiTunnelSlotItem
     public required string ClientIpv4 { get; init; }
     public required string StatusText { get; init; }
     public bool IsConnected { get; init; }
-    public string ConnectButtonText => IsConnected ? "Disconnect" : "Connect";
+    public bool IsConnecting { get; init; }
+    public string? LastError { get; init; }
+    public SolidColorBrush? SlotColorBrush { get; init; }
+    public bool CanToggleConnection => !IsConnecting;
+    public string ConnectButtonText => IsConnecting ? "Connecting..." : (IsConnected ? "Disconnect" : "Connect");
     public required bool CanRemove { get; init; }
     public required string SlotSummary { get; init; }
 }
@@ -511,8 +517,11 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
                     ServerName = slot.ServerName,
                     City = slot.City,
                     ClientIpv4 = slot.ClientIpv4,
-                    StatusText = slot.IsConnected ? "Connected" : "Ready",
+                    StatusText = slot.IsConnecting ? "Connecting..." : (slot.IsConnected ? "Connected" : "Ready"),
                     IsConnected = slot.IsConnected,
+                    IsConnecting = slot.IsConnecting,
+                    LastError = slot.LastError,
+                    SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
                     CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
                     SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName} • {slot.ClientIpv4}",
                 });

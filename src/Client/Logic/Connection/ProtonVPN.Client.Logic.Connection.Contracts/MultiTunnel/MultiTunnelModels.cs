@@ -9,6 +9,7 @@
  * (at your option) any later version.
  */
 
+using System.Text.Json.Serialization;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 
 namespace ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
@@ -28,6 +29,23 @@ public sealed class MultiTunnelSlotConfig
     public string ServerGatewayIpv4 { get; set; } = "10.2.0.1";
     public bool IsConnected { get; set; }
     public bool IsDefaultRouteTunnel { get; set; }
+
+    [JsonIgnore]
+    public bool IsConnecting { get; set; }
+
+    [JsonIgnore]
+    public string? LastError { get; set; }
+
+    public static string GetSlotColorHex(string? slotId) =>
+        (slotId?.Trim().ToUpperInvariant()) switch
+        {
+            "T1" => "#1EA885",
+            "T2" => "#38BDF8",
+            "T3" => "#A78BFA",
+            "T4" => "#F59E0B",
+            "T5" => "#F43F5E",
+            _ => "#1EA885",
+        };
 
     public static MultiTunnelSlotConfig CreateDefault(
         int slotIndex,

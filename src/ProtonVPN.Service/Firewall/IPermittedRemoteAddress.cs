@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -24,6 +24,8 @@ namespace ProtonVPN.Service.Firewall;
 public interface IPermittedRemoteAddress : IFilterCollection
 {
     void Add(string[] addresses, Action action);
+
+    void Remove(string address);
 
     /// <summary>
     /// Replaces all current filters with new ones. The new filters are added before the old ones

@@ -31,6 +31,7 @@ public interface IMultiTunnelManager
     Task RemoveSlotAsync(string slotId);
     Task<bool> ConnectSlotAsync(string slotId);
     Task DisconnectSlotAsync(string slotId);
+    Task<string> HandleMapCountryClickAsync(string countryCode);
 
     Task AddRuleAsync(MultiTunnelRuleConfig rule);
     Task UpdateRuleAsync(MultiTunnelRuleConfig rule);

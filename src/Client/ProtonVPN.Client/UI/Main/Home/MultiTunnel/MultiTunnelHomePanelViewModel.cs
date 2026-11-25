@@ -24,6 +24,7 @@ using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Servers.Contracts;
 using ProtonVPN.Client.Logic.Servers.Contracts.Messages;
 using ProtonVPN.Client.Logic.Servers.Contracts.Models;
+using ProtonVPN.Client.UI.Main.Home.Details.Connection;
 using ProtonVPN.Client.UI.Main.Settings.Pages.Connection;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
@@ -524,10 +525,16 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         if (slot.IsConnected)
         {
             await _multiTunnelManager.DisconnectSlotAsync(slot.SlotId);
+            SlotPickerStatus = $"Disconnected {slot.SlotId}.";
         }
         else
         {
-            await _multiTunnelManager.ConnectSlotAsync(slot.SlotId);
+            bool ok = await _multiTunnelManager.ConnectSlotAsync(slot.SlotId);
+            MultiTunnelSlotConfig? updated = _multiTunnelManager.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase));
+            SlotPickerStatus = ok
+                ? string.Empty
+                : (updated?.LastError ?? $"Failed to connect {slot.SlotId}.");
         }
     }
 
@@ -638,8 +645,11 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                     ServerName = slot.ServerName,
                     City = slot.City,
                     ClientIpv4 = slot.ClientIpv4,
-                    StatusText = slot.IsConnected ? "Connected" : "Ready",
+                    StatusText = slot.IsConnecting ? "Connecting..." : (slot.IsConnected ? "Connected" : "Ready"),
                     IsConnected = slot.IsConnected,
+                    IsConnecting = slot.IsConnecting,
+                    LastError = slot.LastError,
+                    SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
                     CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
                     SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName} • {slot.ClientIpv4}",
                 });

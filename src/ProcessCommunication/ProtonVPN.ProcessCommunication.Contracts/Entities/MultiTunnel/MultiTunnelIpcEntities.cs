@@ -146,3 +146,18 @@ public class MultiTunnelSlotDisconnectionRequestIpcEntity
 {
     [DataMember(Order = 1)] public string SlotId { get; set; } = string.Empty;
 }
+
+[DataContract]
+public class SlotNetworkTrafficIpcEntity
+{
+    [DataMember(Order = 1)] public string SlotId { get; set; } = string.Empty;
+    [DataMember(Order = 2)] public ulong BytesDownloaded { get; set; }
+    [DataMember(Order = 3)] public ulong BytesUploaded { get; set; }
+    [DataMember(Order = 4)] public bool IsConnected { get; set; }
+}
+
+[DataContract]
+public class MultiTunnelTrafficSnapshotIpcEntity
+{
+    [DataMember(Order = 1)] public List<SlotNetworkTrafficIpcEntity> Slots { get; set; } = [];
+}

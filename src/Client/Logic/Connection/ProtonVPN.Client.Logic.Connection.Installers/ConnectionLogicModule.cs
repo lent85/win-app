@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -55,6 +55,7 @@ public class ConnectionLogicModule : Module
         builder.RegisterType<RestrictionsObserver>().AsImplementedInterfaces().SingleInstance().AutoActivate();
         builder.RegisterType<ExclusionChecker>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<MultiTunnelManager>().AsImplementedInterfaces().SingleInstance().AutoActivate();
+        builder.RegisterType<MultiTunnelTrafficManager>().AsImplementedInterfaces().SingleInstance().AutoActivate();
 
         RegisterRequestCreators(builder);
         RegisterServerListGenerators(builder);

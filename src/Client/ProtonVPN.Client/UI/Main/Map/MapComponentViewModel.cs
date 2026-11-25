@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -31,6 +31,7 @@ using ProtonVPN.Client.Logic.Connection.Contracts.Enums;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Locations.Countries;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Servers.Cache;
 using ProtonVPN.Client.Logic.Servers.Contracts.Messages;
 using ProtonVPN.Client.Settings.Contracts;
@@ -49,6 +50,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
     private readonly ISettings _settings;
     private readonly IServersCache _serversCache;
     private readonly IConnectionManager _connectionManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
     private readonly ICoordinatesProvider _coordinatesProvider;
     private readonly IUpsellCarouselWindowActivator _upsellCarouselWindowActivator;
     private readonly IMainWindowOverlayActivator _mainWindowOverlayActivator;
@@ -70,6 +72,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
         ISettings settings,
         IServersCache serversCache,
         IConnectionManager connectionManager,
+        IMultiTunnelManager multiTunnelManager,
         ICoordinatesProvider coordinatesProvider,
         IUpsellCarouselWindowActivator upsellCarouselWindowActivator,
         IMainWindowOverlayActivator mainWindowOverlayActivator,
@@ -79,6 +82,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
         _settings = settings;
         _serversCache = serversCache;
         _connectionManager = connectionManager;
+        _multiTunnelManager = multiTunnelManager;
         _coordinatesProvider = coordinatesProvider;
         _upsellCarouselWindowActivator = upsellCarouselWindowActivator;
         _mainWindowOverlayActivator = mainWindowOverlayActivator;
@@ -197,6 +201,11 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
                 Message =  Localizer.Get("Connections_Country_UnderMaintenance"),
                 PrimaryButtonText = Localizer.Get("Common_Actions_GotIt"),
             });
+        }
+
+        if (_multiTunnelManager.IsEnabled)
+        {
+            return _multiTunnelManager.HandleMapCountryClickAsync(country.Code);
         }
 
         return _connectionManager.ConnectAsync(VpnTriggerDimension.Map, new ConnectionIntent(SingleCountryLocationIntent.From(country.Code)));

@@ -50,4 +50,12 @@ public sealed partial class ConnectionDetailsPageView : IContextAware
     {
         ViewModel.Deactivate();
     }
+
+    private void OnMetricSlotTabClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            ViewModel.SelectMetricSlot(slotId);
+        }
+    }
 }

@@ -27,6 +27,7 @@ using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.Conflicts.Bases;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
 using ProtonVPN.Client.UI.Main.Features.Bases;
+using ProtonVPN.Client.UI.Main.Home.Details.Connection;
 using ProtonVPN.Client.UI.Main.Settings.Pages.Connection;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
@@ -225,8 +226,11 @@ public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
                     ServerName = slot.ServerName,
                     City = slot.City,
                     ClientIpv4 = slot.ClientIpv4,
-                    StatusText = slot.IsConnected ? "Connected" : "Ready",
+                    StatusText = slot.IsConnecting ? "Connecting..." : (slot.IsConnected ? "Connected" : "Ready"),
                     IsConnected = slot.IsConnected,
+                    IsConnecting = slot.IsConnecting,
+                    LastError = slot.LastError,
+                    SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
                     CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
                     SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName}",
                 });

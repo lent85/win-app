@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,7 +17,9 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml.Media;
 using ProtonVPN.Client.Common.Enums;
 using ProtonVPN.Client.Common.Helpers;
 using ProtonVPN.Client.Contracts.Messages;
@@ -28,17 +30,31 @@ using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Localization.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts.History;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Common.Core.Networking;
 
 namespace ProtonVPN.Client.UI.Main.Home.Details.Connection;
 
+public sealed class SlotTrafficLegendItem
+{
+    public required string SlotId { get; init; }
+    public required string Label { get; init; }
+    public required SolidColorBrush ColorBrush { get; init; }
+    public required string DownloadText { get; init; }
+    public required string UploadText { get; init; }
+}
+
 public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
     IEventMessageReceiver<NetworkTrafficChangedMessage>,
+    IEventMessageReceiver<MultiTunnelTrafficChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>,
     IEventMessageReceiver<MainWindowVisibilityChangedMessage>
 {
     private const double Y_AXIS_BUFFER = 1.1;
 
     private readonly INetworkTrafficManager _networkTrafficManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
+    private readonly IMultiTunnelTrafficManager _multiTunnelTrafficManager;
     private readonly IMainWindowActivator _mainWindowActivator;
 
     [ObservableProperty]
@@ -82,6 +98,14 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
     private IReadOnlyList<double> _uploadSpeedHistory = [];
 
     [ObservableProperty]
+    private IReadOnlyList<SlotSpeedChartSeries> _slotSeries = [];
+
+    [ObservableProperty]
+    private bool _isMultiTunnelChartActive;
+
+    public ObservableCollection<SlotTrafficLegendItem> SlotLegends { get; } = [];
+
+    [ObservableProperty]
     private double _lowerBound;
 
     [ObservableProperty]
@@ -91,16 +115,30 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
     private double _upperBound;
 
     public SpeedChartComponentViewModel(
-        INetworkTrafficManager networkTrafficManager, 
+        INetworkTrafficManager networkTrafficManager,
+        IMultiTunnelManager multiTunnelManager,
+        IMultiTunnelTrafficManager multiTunnelTrafficManager,
         IMainWindowActivator mainWindowActivator,
         IViewModelHelper viewModelHelper)
         : base(viewModelHelper)
     {
         _networkTrafficManager = networkTrafficManager;
+        _multiTunnelManager = multiTunnelManager;
+        _multiTunnelTrafficManager = multiTunnelTrafficManager;
         _mainWindowActivator = mainWindowActivator;
     }
 
     public void Receive(NetworkTrafficChangedMessage message)
+    {
+        ExecuteOnUIThread(InvalidateAll);
+    }
+
+    public void Receive(MultiTunnelTrafficChangedMessage message)
+    {
+        ExecuteOnUIThread(InvalidateAll);
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
     {
         ExecuteOnUIThread(InvalidateAll);
     }
@@ -114,7 +152,7 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
     {
         base.OnActivated();
 
-        InvalidateSpeedGraph();
+        InvalidateAll();
     }
 
     protected override void OnLanguageChanged()
@@ -136,6 +174,21 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
             return;
         }
 
+        IReadOnlyList<SlotTrafficSnapshot> connectedSlots = _multiTunnelManager.IsEnabled
+            ? _multiTunnelTrafficManager.GetConnectedSlotTraffics()
+            : [];
+
+        if (connectedSlots.Count > 0)
+        {
+            IsMultiTunnelChartActive = true;
+            InvalidateMultiTunnelChart(connectedSlots);
+            return;
+        }
+
+        IsMultiTunnelChartActive = false;
+        SlotSeries = [];
+        SlotLegends.Clear();
+
         NetworkTraffic speed = _networkTrafficManager.GetSpeed();
         NetworkTraffic volume = _networkTrafficManager.GetVolume();
 
@@ -148,13 +201,96 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
         InvalidateSpeedGraph();
     }
 
+    private void InvalidateMultiTunnelChart(IReadOnlyList<SlotTrafficSnapshot> connectedSlots)
+    {
+        string selectedSlotId = _multiTunnelTrafficManager.SelectedMetricsSlotId;
+        bool isAll = string.Equals(selectedSlotId, "ALL", StringComparison.OrdinalIgnoreCase);
+
+        IReadOnlyList<SlotTrafficSnapshot> displayedSlots = isAll
+            ? connectedSlots
+            : connectedSlots.Where(s => string.Equals(s.SlotId, selectedSlotId, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (displayedSlots.Count == 0)
+        {
+            displayedSlots = connectedSlots;
+            isAll = true;
+        }
+
+        if (isAll)
+        {
+            NetworkTraffic totalSpeed = _multiTunnelTrafficManager.GetTotalSpeed();
+            NetworkTraffic totalVolume = _multiTunnelTrafficManager.GetTotalVolume();
+            DownloadSpeed = (long)totalSpeed.BytesDownloaded;
+            UploadSpeed = (long)totalSpeed.BytesUploaded;
+            DownloadVolume = (long)totalVolume.BytesDownloaded;
+            UploadVolume = (long)totalVolume.BytesUploaded;
+        }
+        else
+        {
+            SlotTrafficSnapshot selected = displayedSlots[0];
+            DownloadSpeed = (long)selected.Speed.BytesDownloaded;
+            UploadSpeed = (long)selected.Speed.BytesUploaded;
+            DownloadVolume = (long)selected.Volume.BytesDownloaded;
+            UploadVolume = (long)selected.Volume.BytesUploaded;
+        }
+
+        long maxSpeed = 0;
+        foreach (SlotTrafficSnapshot slot in displayedSlots)
+        {
+            foreach (NetworkTraffic point in slot.SpeedHistory)
+            {
+                if ((long)point.BytesDownloaded > maxSpeed)
+                {
+                    maxSpeed = (long)point.BytesDownloaded;
+                }
+                if ((long)point.BytesUploaded > maxSpeed)
+                {
+                    maxSpeed = (long)point.BytesUploaded;
+                }
+            }
+        }
+
+        (double scaledMaxSpeed, ByteMetrics metric) = ByteConversionHelper.CalculateSize(maxSpeed);
+        Metric = metric;
+        double scaleFactor = ByteConversionHelper.GetScaleFactor(Metric);
+        double roundedScaledMaxSpeed = CalculateYAxisLimit(scaledMaxSpeed);
+
+        LowerBound = 0.0;
+        Midpoint = roundedScaledMaxSpeed / 2.0;
+        UpperBound = roundedScaledMaxSpeed;
+
+        List<SlotSpeedChartSeries> seriesList = [];
+        SlotLegends.Clear();
+
+        foreach (SlotTrafficSnapshot slot in displayedSlots)
+        {
+            IReadOnlyList<double> dl = slot.SpeedHistory.Select(nt => GetScaledDataPoint((long)nt.BytesDownloaded, scaleFactor)).ToList();
+            IReadOnlyList<double> ul = slot.SpeedHistory.Select(nt => GetScaledDataPoint((long)nt.BytesUploaded, scaleFactor)).ToList();
+            seriesList.Add(new SlotSpeedChartSeries(slot.SlotId, slot.ColorHex, dl, ul));
+
+            string countryTag = string.IsNullOrWhiteSpace(slot.CountryCode) ? slot.SlotId : $"{slot.SlotId}·{slot.CountryCode}";
+            SlotLegends.Add(new SlotTrafficLegendItem
+            {
+                SlotId = slot.SlotId,
+                Label = countryTag,
+                ColorBrush = SlotColorBrushHelper.ToBrush(slot.ColorHex),
+                DownloadText = $"↓ {Localizer.GetFormattedSpeed((long)slot.Speed.BytesDownloaded)}",
+                UploadText = $"↑ {Localizer.GetFormattedSpeed((long)slot.Speed.BytesUploaded)}",
+            });
+        }
+
+        SlotSeries = seriesList;
+        DownloadSpeedHistory = [];
+        UploadSpeedHistory = [];
+    }
+
     private void InvalidateSpeedGraph()
     {
         IReadOnlyList<NetworkTraffic> speedHistory = _networkTrafficManager.GetSpeedHistory();
         IEnumerable<long> downloadHistory = speedHistory.Select(nt => (long)nt.BytesDownloaded);
         IEnumerable<long> uploadHistory = speedHistory.Select(nt => (long)nt.BytesUploaded);
 
-        long maxSpeed = Math.Max(downloadHistory.Max(), uploadHistory.Max());
+        long maxSpeed = Math.Max(downloadHistory.DefaultIfEmpty(0).Max(), uploadHistory.DefaultIfEmpty(0).Max());
         (double scaledMaxSpeed, ByteMetrics metric) = ByteConversionHelper.CalculateSize(maxSpeed);
 
         Metric = metric;
@@ -188,22 +324,18 @@ public partial class SpeedChartComponentViewModel : ActivatableViewModelBase,
 
         if (maxValue < 1)
         {
-            // For values less than 1, round up to the nearest 0.2
             roundedLimit = Math.Ceiling(maxValue * 5) / 5;
         }
         else if (maxValue <= 5)
         {
-            // For values between 1 and 5, round up to the nearest 1
             roundedLimit = Math.Ceiling(maxValue);
         }
         else if (maxValue <= 20)
         {
-            // For values between 5 and 20, round up to the nearest 2
             roundedLimit = Math.Ceiling(maxValue / 2) * 2;
         }
         else
         {
-            // For values greater than 10, use a scale-based rounding factor
             double scale = Math.Pow(10, Math.Floor(Math.Log10(maxValue)));
             roundedLimit = Math.Ceiling(maxValue / scale) * scale;
         }

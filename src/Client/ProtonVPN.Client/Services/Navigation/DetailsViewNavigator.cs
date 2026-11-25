@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -20,6 +20,7 @@
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Client.Core.Services.Mapping;
 using ProtonVPN.Client.Core.Services.Navigation;
@@ -31,18 +32,22 @@ using ProtonVPN.Client.Common.Dispatching;
 namespace ProtonVPN.Client.Services.Navigation;
 
 public class DetailsViewNavigator : ViewNavigatorBase, IDetailsViewNavigator,
-    IEventMessageReceiver<ConnectionStatusChangedMessage>
+    IEventMessageReceiver<ConnectionStatusChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private readonly IConnectionManager _connectionManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
 
     public DetailsViewNavigator(
         ILogger logger,
         IPageViewMapper pageViewMapper,
         IUIThreadDispatcher uiThreadDispatcher,
-        IConnectionManager connectionManager)
+        IConnectionManager connectionManager,
+        IMultiTunnelManager multiTunnelManager)
         : base(logger, pageViewMapper, uiThreadDispatcher)
     {
         _connectionManager = connectionManager;
+        _multiTunnelManager = multiTunnelManager;
     }
 
     public Task<bool> NavigateToLocationDetailsViewAsync()
@@ -57,12 +62,20 @@ public class DetailsViewNavigator : ViewNavigatorBase, IDetailsViewNavigator,
 
     public override Task<bool> NavigateToDefaultAsync()
     {
-        return _connectionManager.IsConnected
+        bool hasActiveTunnel = _connectionManager.IsConnected ||
+            (_multiTunnelManager.IsEnabled && _multiTunnelManager.ConnectedSlotCount > 0);
+
+        return hasActiveTunnel
             ? NavigateToConnectionDetailsViewAsync()
             : NavigateToLocationDetailsViewAsync();
     }
 
     public void Receive(ConnectionStatusChangedMessage message)
+    {
+        UIThreadDispatcher.TryEnqueue(NavigateToDefaultAsync);
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
     {
         UIThreadDispatcher.TryEnqueue(NavigateToDefaultAsync);
     }

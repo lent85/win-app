@@ -113,6 +113,8 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses />.
             <Polyline x:Name="DownloadPolyline"
                      Stroke="{ThemeResource SignalSuccessColorBrush}" 
                      Style="{StaticResource SpeedLineStyle}" />
+
+            <Canvas x:Name="MultiSeriesCanvas" />
         </Canvas>
 
     </Grid>

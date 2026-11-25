@@ -110,13 +110,13 @@ the Free Software Foundation, either version 3 of the License, or
 
                                         <Grid Grid.Column="0"
                                               VerticalAlignment="Center">
-                                            <Ellipse Width="7"
-                                                     Height="7"
-                                                     Fill="{ThemeResource TextWeakColorBrush}"
-                                                     Opacity="0.45" />
-                                            <Ellipse Width="7"
-                                                     Height="7"
-                                                     Fill="{ThemeResource SignalSuccessColorBrush}"
+                                            <Ellipse Width="8"
+                                                     Height="8"
+                                                     Fill="{x:Bind SlotColorBrush}"
+                                                     Opacity="0.35" />
+                                            <Ellipse Width="8"
+                                                     Height="8"
+                                                     Fill="{x:Bind SlotColorBrush}"
                                                      Visibility="{x:Bind IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         </Grid>
 
@@ -141,6 +141,7 @@ the Free Software Foundation, either version 3 of the License, or
                                                 Padding="8,4"
                                                 Click="OnConnectSlotClick"
                                                 Content="{x:Bind ConnectButtonText}"
+                                                IsEnabled="{x:Bind CanToggleConnection}"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="{x:Bind SlotId}" />
                                     </Grid>

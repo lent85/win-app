@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <AssemblyName>ProtonVPNService</AssemblyName>
@@ -70,6 +70,7 @@
         <ProjectReference Include="..\ProtonVPN.Native\ProtonVPN.Native.csproj" />
         <ProjectReference Include="..\ProtonVPN.NetworkFilter\ProtonVPN.NetworkFilter.csproj" />
         <ProjectReference Include="..\ProtonVPN.Vpn\ProtonVPN.Vpn.csproj" />
+        <ProjectReference Include="..\ProtonVPN.WireGuardDriver\ProtonVPN.WireGuardDriver.csproj" />
         <ProjectReference Include="..\ProTun\ProtonVPN.ProTun.Contracts\ProtonVPN.ProTun.Contracts.csproj" />
         <ProjectReference Include="..\ProTun\ProtonVPN.ProTun.Installers\ProtonVPN.ProTun.Installers.csproj" />
         <ProjectReference Include="..\Serialization\ProtonVPN.Serialization.Installers\ProtonVPN.Serialization.Installers.csproj" />

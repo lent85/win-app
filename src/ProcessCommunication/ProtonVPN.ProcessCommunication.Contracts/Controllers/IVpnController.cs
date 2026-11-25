@@ -45,4 +45,5 @@ public interface IVpnController : IServiceController
     Task<RoutingDecisionIpcEntity> EvaluateMultiTunnelTraffic(TrafficQueryIpcEntity query, CancellationToken cancelToken);
     Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectMultiTunnelSlot(MultiTunnelSlotConnectionRequestIpcEntity request, CancellationToken cancelToken);
     Task DisconnectMultiTunnelSlot(MultiTunnelSlotDisconnectionRequestIpcEntity request, CancellationToken cancelToken);
+    Task<MultiTunnelTrafficSnapshotIpcEntity> GetMultiTunnelNetworkTraffic(CancellationToken cancelToken);
 }

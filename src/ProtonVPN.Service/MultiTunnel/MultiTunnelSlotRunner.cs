@@ -11,9 +11,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +31,10 @@ using ProtonVPN.OperatingSystems.Network.Contracts.Routing;
 using ProtonVPN.OperatingSystems.Services.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
+using ProtonVPN.Service.Firewall;
 using ProtonVPN.Vpn.Common;
+using ProtonVPN.WireGuardDriver;
+using FilterAction = ProtonVPN.NetworkFilter.Action;
 
 namespace ProtonVPN.Service.MultiTunnel;
 
@@ -42,6 +47,8 @@ public interface IMultiTunnelSlotRunner
     Task DisconnectSlotAsync(string slotId, CancellationToken cancellationToken);
 
     Task DisconnectAllAsync();
+
+    IReadOnlyList<SlotNetworkTrafficIpcEntity> GetSlotTrafficSnapshot();
 }
 
 public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
@@ -56,6 +63,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
     private readonly IRoutingTableHelper _routingTableHelper;
     private readonly IIpv4GatewayResolver _ipv4GatewayResolver;
     private readonly MultiTunnelOrchestrator _orchestrator;
+    private readonly IPermittedRemoteAddress? _permittedRemoteAddress;
 
     public MultiTunnelSlotRunner(
         ILogger logger,
@@ -65,7 +73,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         IServiceFactory serviceFactory,
         IRoutingTableHelper routingTableHelper,
         IIpv4GatewayResolver ipv4GatewayResolver,
-        MultiTunnelOrchestrator orchestrator)
+        MultiTunnelOrchestrator orchestrator,
+        IPermittedRemoteAddress? permittedRemoteAddress = null)
     {
         _logger = logger;
         _staticConfig = staticConfig;
@@ -75,6 +84,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         _routingTableHelper = routingTableHelper;
         _ipv4GatewayResolver = ipv4GatewayResolver;
         _orchestrator = orchestrator;
+        _permittedRemoteAddress = permittedRemoteAddress;
     }
 
     public async Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(
@@ -178,6 +188,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 }
             }
 
+            _permittedRemoteAddress?.Add([endpoint.Ip], FilterAction.HardPermit);
+
             if (shouldCreateRoute &&
                 NetworkAddress.TryParse(endpoint.Ip, out NetworkAddress endpointAddress) &&
                 _ipv4GatewayResolver.TryGetBestIpv4Gateway(_staticConfig.GetWireGuardHardwareId(), out Ipv4GatewayInfo? gatewayInfo) &&
@@ -220,10 +232,11 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
             bool started = await service.StartAsync(cancellationToken).ConfigureAwait(false);
             if (!started && !service.IsRunning())
             {
-                _orchestrator.DeactivateSlot(slotId, out string failedIp);
-                if (!string.IsNullOrWhiteSpace(failedIp))
+                bool removedLast = _orchestrator.DeactivateSlot(slotId, out string failedIp);
+                if (removedLast && !string.IsNullOrWhiteSpace(failedIp))
                 {
                     _routingTableHelper.DeleteRoute(failedIp, isIpv6: false);
+                    _permittedRemoteAddress?.Remove(failedIp);
                 }
 
                 return new MultiTunnelSlotConnectionResultIpcEntity
@@ -247,10 +260,11 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         catch (Exception ex)
         {
             _logger.Error<ConnectLog>($"MultiTunnelSlotRunner: Failed to connect slot {slotId}.", ex);
-            _orchestrator.DeactivateSlot(slotId, out string cleanupIp);
-            if (!string.IsNullOrWhiteSpace(cleanupIp))
+            bool removedLast = _orchestrator.DeactivateSlot(slotId, out string cleanupIp);
+            if (removedLast && !string.IsNullOrWhiteSpace(cleanupIp))
             {
                 _routingTableHelper.DeleteRoute(cleanupIp, isIpv6: false);
+                _permittedRemoteAddress?.Remove(cleanupIp);
             }
 
             return new MultiTunnelSlotConnectionResultIpcEntity
@@ -289,6 +303,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         if (shouldDeleteRoute && !string.IsNullOrWhiteSpace(releasedEntryIp))
         {
             _routingTableHelper.DeleteRoute(releasedEntryIp, isIpv6: false);
+            _permittedRemoteAddress?.Remove(releasedEntryIp);
         }
 
         _logger.Info<DisconnectLog>($"MultiTunnelSlotRunner: Disconnected slot {normalizedId}.");
@@ -300,6 +315,73 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         {
             await DisconnectSlotAsync($"T{i + 1}", CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    public IReadOnlyList<SlotNetworkTrafficIpcEntity> GetSlotTrafficSnapshot()
+    {
+        List<SlotNetworkTrafficIpcEntity> results = [];
+        IReadOnlyDictionary<string, TunnelSlotRuntimeState> states = _orchestrator.GetSlotStates();
+
+        for (int i = 1; i < TunnelSlotAllocation.MaxTunnelSlots; i++)
+        {
+            string slotId = $"T{i + 1}";
+            if (!states.TryGetValue(slotId, out TunnelSlotRuntimeState? state) || !state.IsConnected)
+            {
+                continue;
+            }
+
+            (ulong rx, ulong tx) = ReadAdapterTraffic(slotId);
+            results.Add(new SlotNetworkTrafficIpcEntity
+            {
+                SlotId = slotId,
+                BytesDownloaded = rx,
+                BytesUploaded = tx,
+                IsConnected = true,
+            });
+        }
+
+        return results;
+    }
+
+    private static (ulong Rx, ulong Tx) ReadAdapterTraffic(string slotId)
+    {
+        string adapterName = $"ProtonVPN-{slotId}";
+        try
+        {
+            using Adapter adapter = new(adapterName);
+            Interface iface = adapter.GetConfiguration();
+            ulong rx = 0;
+            ulong tx = 0;
+            foreach (Peer peer in iface.Peers)
+            {
+                rx += peer.RxBytes;
+                tx += peer.TxBytes;
+            }
+            return (rx, tx);
+        }
+        catch (Win32Exception)
+        {
+            // Fallback to OS interface statistics if WireGuardNT adapter handle is unavailable
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            NetworkInterface? nic = NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(n => string.Equals(n.Name, adapterName, StringComparison.OrdinalIgnoreCase));
+            if (nic is not null)
+            {
+                IPInterfaceStatistics stats = nic.GetIPStatistics();
+                return ((ulong)Math.Max(0, stats.BytesReceived), (ulong)Math.Max(0, stats.BytesSent));
+            }
+        }
+        catch
+        {
+        }
+
+        return (0, 0);
     }
 
     private async Task StopSlotServiceAsync(string slotId)

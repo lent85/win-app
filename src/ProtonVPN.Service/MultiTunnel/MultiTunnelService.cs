@@ -131,6 +131,19 @@ public sealed class MultiTunnelService : IMultiTunnelService
                     continue;
                 }
 
+                if (_slotRunner is not null)
+                {
+                    // Runtime connection state for T2..T5 is owned by ConnectSlotAsync/DisconnectSlotAsync.
+                    if (!runtimeSlot.IsConnected)
+                    {
+                        runtimeSlot.CountryCode = slot.ServerCountryCode ?? string.Empty;
+                        runtimeSlot.ServerName = slot.ServerName ?? string.Empty;
+                        runtimeSlot.EntryIp = slot.EntryIp ?? string.Empty;
+                        runtimeSlot.ExitIp = slot.ExitIp ?? string.Empty;
+                    }
+                    continue;
+                }
+
                 if (slot.Status == VpnStatusIpcEntity.Connected)
                 {
                     _orchestrator.ActivateSlot(
@@ -283,6 +296,29 @@ public sealed class MultiTunnelService : IMultiTunnelService
                 _wfpManager.Disable();
             }
         }
+    }
+
+    public MultiTunnelTrafficSnapshotIpcEntity GetTrafficSnapshot(NetworkTraffic primaryTraffic)
+    {
+        MultiTunnelTrafficSnapshotIpcEntity snapshot = new();
+
+        lock (_lock)
+        {
+            snapshot.Slots.Add(new SlotNetworkTrafficIpcEntity
+            {
+                SlotId = "T1",
+                BytesDownloaded = primaryTraffic.BytesDownloaded,
+                BytesUploaded = primaryTraffic.BytesUploaded,
+                IsConnected = _isPrimaryVpnConnected,
+            });
+        }
+
+        if (_slotRunner is not null)
+        {
+            snapshot.Slots.AddRange(_slotRunner.GetSlotTrafficSnapshot());
+        }
+
+        return snapshot;
     }
 
     public void OnServiceStop()

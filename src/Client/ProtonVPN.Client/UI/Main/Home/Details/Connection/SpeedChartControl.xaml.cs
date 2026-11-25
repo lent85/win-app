@@ -3,7 +3,6 @@
  *
  * This file is part of ProtonVPN.
  *
-
  * ProtonVPN is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -19,10 +18,17 @@
  */
 
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 
 namespace ProtonVPN.Client.UI.Main.Home.Details.Connection;
+
+public sealed record SlotSpeedChartSeries(
+    string SlotId,
+    string ColorHex,
+    IReadOnlyList<double> DownloadHistory,
+    IReadOnlyList<double> UploadHistory);
 
 public sealed partial class SpeedChartControl
 {
@@ -40,6 +46,9 @@ public sealed partial class SpeedChartControl
 
     public static readonly DependencyProperty UploadSpeedHistoryProperty =
         DependencyProperty.Register(nameof(UploadSpeedHistory), typeof(IReadOnlyList<double>), typeof(SpeedChartControl), new PropertyMetadata(null, OnUploadSpeedHistoryChanged));
+
+    public static readonly DependencyProperty SlotSeriesProperty =
+        DependencyProperty.Register(nameof(SlotSeries), typeof(IReadOnlyList<SlotSpeedChartSeries>), typeof(SpeedChartControl), new PropertyMetadata(null, OnSlotSeriesChanged));
 
     public double LowerBound
     {
@@ -71,6 +80,12 @@ public sealed partial class SpeedChartControl
         set => SetValue(UploadSpeedHistoryProperty, value);
     }
 
+    public IReadOnlyList<SlotSpeedChartSeries>? SlotSeries
+    {
+        get => (IReadOnlyList<SlotSpeedChartSeries>?)GetValue(SlotSeriesProperty);
+        set => SetValue(SlotSeriesProperty, value);
+    }
+
     public SpeedChartControl()
     {
         InitializeComponent();
@@ -92,10 +107,19 @@ public sealed partial class SpeedChartControl
         }
     }
 
+    private static void OnSlotSeriesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is SpeedChartControl chart)
+        {
+            chart.UpdateMultiSeriesChart();
+        }
+    }
+
     private void OnChartCanvasSizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateDownloadChart();
         UpdateUploadChart();
+        UpdateMultiSeriesChart();
     }
 
     private void UpdateDownloadChart()
@@ -108,12 +132,76 @@ public sealed partial class SpeedChartControl
         UpdateChart(UploadPolyline, UploadPolygon, UploadSpeedHistory);
     }
 
+    private void UpdateMultiSeriesChart()
+    {
+        MultiSeriesCanvas.Children.Clear();
+
+        IReadOnlyList<SlotSpeedChartSeries>? seriesList = SlotSeries;
+        bool hasMultiSeries = seriesList is not null && seriesList.Count > 0;
+
+        Visibility singleVisibility = hasMultiSeries ? Visibility.Collapsed : Visibility.Visible;
+        DownloadPolygon.Visibility = singleVisibility;
+        DownloadPolyline.Visibility = singleVisibility;
+        UploadPolygon.Visibility = singleVisibility;
+        UploadPolyline.Visibility = singleVisibility;
+
+        if (!hasMultiSeries || seriesList is null)
+        {
+            return;
+        }
+
+        double canvasWidth = ChartCanvas.ActualWidth;
+        double canvasHeight = ChartCanvas.ActualHeight;
+        if (canvasWidth <= 0 || canvasHeight <= 0)
+        {
+            return;
+        }
+
+        foreach (SlotSpeedChartSeries series in seriesList)
+        {
+            SolidColorBrush lineBrush = SlotColorBrushHelper.ToBrush(series.ColorHex);
+            SolidColorBrush fillBrush = SlotColorBrushHelper.ToBrush(series.ColorHex, alpha: 30);
+
+            if (series.DownloadHistory.Count > 1)
+            {
+                Polygon dlPoly = new() { Fill = fillBrush };
+                Polyline dlLine = new()
+                {
+                    Stroke = lineBrush,
+                    StrokeThickness = 1.8,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    StrokeLineJoin = PenLineJoin.Round,
+                };
+                PopulatePoints(dlLine, dlPoly, series.DownloadHistory, canvasWidth, canvasHeight);
+                MultiSeriesCanvas.Children.Add(dlPoly);
+                MultiSeriesCanvas.Children.Add(dlLine);
+            }
+
+            if (series.UploadHistory.Count > 1)
+            {
+                Polyline ulLine = new()
+                {
+                    Stroke = lineBrush,
+                    Opacity = 0.72,
+                    StrokeThickness = 1.2,
+                    StrokeDashArray = [3, 3],
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    StrokeLineJoin = PenLineJoin.Round,
+                };
+                PopulatePoints(ulLine, polygon: null, series.UploadHistory, canvasWidth, canvasHeight);
+                MultiSeriesCanvas.Children.Add(ulLine);
+            }
+        }
+    }
+
     private void UpdateChart(Polyline polyline, Polygon polygon, IReadOnlyList<double>? speedHistory)
     {
         polyline.Points.Clear();
         polygon.Points.Clear();
 
-        if (speedHistory is null || speedHistory.Count == 0)
+        if (speedHistory is null || speedHistory.Count <= 1)
         {
             return;
         }
@@ -126,23 +214,25 @@ public sealed partial class SpeedChartControl
             return;
         }
 
+        PopulatePoints(polyline, polygon, speedHistory, canvasWidth, canvasHeight);
+    }
+
+    private void PopulatePoints(Polyline polyline, Polygon? polygon, IReadOnlyList<double> speedHistory, double canvasWidth, double canvasHeight)
+    {
         double xStep = canvasWidth / (speedHistory.Count - 1);
 
-        // Start polygon at bottom-left corner
-        polygon.Points.Add(new Point(0, canvasHeight));
+        polygon?.Points.Add(new Point(0, canvasHeight));
 
-        // Add data points
         for (int i = 0; i < speedHistory.Count; i++)
         {
             double x = i * xStep;
             double y = ScaleValueToY(speedHistory[i], canvasHeight);
             Point point = new(x, y);
-            polygon.Points.Add(point);
+            polygon?.Points.Add(point);
             polyline.Points.Add(point);
         }
 
-        // Close polygon at bottom-right corner
-        polygon.Points.Add(new Point(canvasWidth, canvasHeight));
+        polygon?.Points.Add(new Point(canvasWidth, canvasHeight));
     }
 
     private double ScaleValueToY(double value, double canvasHeight)
@@ -152,13 +242,8 @@ public sealed partial class SpeedChartControl
             return canvasHeight;
         }
 
-        // Clamp value to bounds
         double clampedValue = Math.Clamp(value, LowerBound, UpperBound);
-
-        // Calculate ratio (0 = LowerBound, 1 = UpperBound)
         double ratio = (clampedValue - LowerBound) / (UpperBound - LowerBound);
-
-        // Invert because Y=0 is at the top in UI coordinates
         return canvasHeight * (1 - ratio);
     }
 }

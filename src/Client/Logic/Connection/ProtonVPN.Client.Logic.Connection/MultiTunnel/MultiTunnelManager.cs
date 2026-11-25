@@ -48,6 +48,7 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
     private readonly IConnectionRequestCreator? _connectionRequestCreator;
 
     private readonly object _lock = new();
+    private readonly HashSet<string> _busySlots = new(StringComparer.OrdinalIgnoreCase);
     private MultiTunnelPolicyConfig _config = new();
     private List<MultiTunnelRuleConflict> _conflicts = [];
 
@@ -251,28 +252,77 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
     public async Task<bool> ConnectSlotAsync(string slotId)
     {
         MultiTunnelSlotConfig? slot;
+        string normalizedId;
         lock (_lock)
         {
             slot = _config.Slots.FirstOrDefault(s =>
                 string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
+            if (slot is null || string.IsNullOrWhiteSpace(slot.CountryCode))
+            {
+                return false;
+            }
+
+            normalizedId = slot.SlotId.ToUpperInvariant();
+            if (!_busySlots.Add(normalizedId))
+            {
+                return false;
+            }
+
+            slot.IsConnecting = true;
+            slot.LastError = null;
         }
 
-        if (slot is null || string.IsNullOrWhiteSpace(slot.CountryCode))
-        {
-            return false;
-        }
+        NotifyChanged();
 
         IConnectionIntent intent = new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
 
-        if (string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(normalizedId, "T1", StringComparison.OrdinalIgnoreCase))
         {
-            await _connectionManager.ConnectAsync(VpnTriggerDimension.CountriesCountry, intent);
-            return true;
+            try
+            {
+                await _connectionManager.ConnectAsync(VpnTriggerDimension.CountriesCountry, intent);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                lock (_lock)
+                {
+                    if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase)) is { } t1)
+                    {
+                        t1.LastError = ex.Message;
+                        t1.IsConnecting = false;
+                    }
+                    _busySlots.Remove(normalizedId);
+                }
+                NotifyChanged();
+                return false;
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    _busySlots.Remove(normalizedId);
+                    if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase)) is { } t1)
+                    {
+                        t1.IsConnecting = _connectionManager.IsConnecting;
+                    }
+                }
+            }
         }
 
         if (_connectionRequestCreator is null)
         {
-            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Cannot connect secondary slot {slot.SlotId} without IConnectionRequestCreator.");
+            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Cannot connect secondary slot {normalizedId} without IConnectionRequestCreator.");
+            lock (_lock)
+            {
+                _busySlots.Remove(normalizedId);
+                if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase)) is { } target)
+                {
+                    target.IsConnecting = false;
+                    target.LastError = "Connection request creator unavailable.";
+                }
+            }
+            NotifyChanged();
             return false;
         }
 
@@ -293,17 +343,27 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             Result<MultiTunnelSlotConnectionResultIpcEntity> ipcResult = await _vpnServiceCaller.ConnectMultiTunnelSlotAsync(slotRequest);
             if (!ipcResult.Success || ipcResult.Value is null || !ipcResult.Value.Success)
             {
-                _logger.Warn<ConnectionLog>($"MultiTunnelManager: Failed to connect slot {slot.SlotId}: {ipcResult.Value?.ErrorMessage ?? "IPC failure"}");
+                string errorMessage = ipcResult.Value?.ErrorMessage ?? "Failed to connect tunnel slot.";
+                _logger.Warn<ConnectionLog>($"MultiTunnelManager: Failed to connect slot {normalizedId}: {errorMessage}");
+                lock (_lock)
+                {
+                    if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase)) is { } target)
+                    {
+                        target.IsConnected = false;
+                        target.LastError = errorMessage;
+                    }
+                }
                 return false;
             }
 
             lock (_lock)
             {
                 MultiTunnelSlotConfig? target = _config.Slots.FirstOrDefault(s =>
-                    string.Equals(s.SlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase));
                 if (target is not null)
                 {
                     target.IsConnected = true;
+                    target.LastError = null;
                     if (!string.IsNullOrWhiteSpace(ipcResult.Value.ConnectedServerName))
                     {
                         target.ServerName = ipcResult.Value.ConnectedServerName;
@@ -317,14 +377,33 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                 }
             }
 
-            NotifyChanged();
             await SyncPolicyToServiceAsync();
             return true;
         }
         catch (Exception ex)
         {
-            _logger.Error<ConnectionLog>($"MultiTunnelManager: Error connecting slot {slot.SlotId}.", ex);
+            _logger.Error<ConnectionLog>($"MultiTunnelManager: Error connecting slot {normalizedId}.", ex);
+            lock (_lock)
+            {
+                if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase)) is { } target)
+                {
+                    target.IsConnected = false;
+                    target.LastError = ex.Message;
+                }
+            }
             return false;
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _busySlots.Remove(normalizedId);
+                if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase)) is { } target)
+                {
+                    target.IsConnecting = false;
+                }
+            }
+            NotifyChanged();
         }
     }
 
@@ -335,34 +414,117 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             return;
         }
 
-        if (string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
+        string normalizedId = slotId.Trim().ToUpperInvariant();
+        if (string.Equals(normalizedId, "T1", StringComparison.OrdinalIgnoreCase))
         {
             await _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
             return;
         }
 
+        lock (_lock)
+        {
+            if (!_busySlots.Add(normalizedId))
+            {
+                return;
+            }
+            if (_config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase)) is { } target)
+            {
+                target.IsConnecting = true;
+                target.LastError = null;
+            }
+        }
+        NotifyChanged();
+
         try
         {
-            await _vpnServiceCaller.DisconnectMultiTunnelSlotAsync(slotId);
+            await _vpnServiceCaller.DisconnectMultiTunnelSlotAsync(normalizedId);
         }
         catch (Exception ex)
         {
-            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Error disconnecting slot {slotId}: {ex.Message}");
+            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Error disconnecting slot {normalizedId}: {ex.Message}");
         }
+        finally
+        {
+            lock (_lock)
+            {
+                _busySlots.Remove(normalizedId);
+                MultiTunnelSlotConfig? target = _config.Slots.FirstOrDefault(s =>
+                    string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase));
+                if (target is not null)
+                {
+                    target.IsConnected = false;
+                    target.IsConnecting = false;
+                    NormalizeAndPersistLocked();
+                }
+            }
+
+            NotifyChanged();
+            await SyncPolicyToServiceAsync();
+        }
+    }
+
+    public async Task<string> HandleMapCountryClickAsync(string countryCode)
+    {
+        if (string.IsNullOrWhiteSpace(countryCode))
+        {
+            return string.Empty;
+        }
+
+        string normalizedCode = countryCode.Trim().ToUpperInvariant();
+
+        if (!IsEnabled)
+        {
+            IConnectionIntent directIntent = new ConnectionIntent(SingleCountryLocationIntent.From(normalizedCode));
+            await _connectionManager.ConnectAsync(VpnTriggerDimension.Map, directIntent);
+            return string.Empty;
+        }
+
+        MultiTunnelSlotConfig? t1;
+        MultiTunnelSlotConfig? existing;
+        int slotCount;
 
         lock (_lock)
         {
-            MultiTunnelSlotConfig? target = _config.Slots.FirstOrDefault(s =>
-                string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
-            if (target is not null)
-            {
-                target.IsConnected = false;
-                NormalizeAndPersistLocked();
-            }
+            t1 = _config.Slots.FirstOrDefault(s => string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase));
+            existing = _config.Slots.FirstOrDefault(s => string.Equals(s.CountryCode, normalizedCode, StringComparison.OrdinalIgnoreCase));
+            slotCount = _config.Slots.Count;
         }
 
-        NotifyChanged();
-        await SyncPolicyToServiceAsync();
+        if (t1 is null || (!t1.IsConnected && !t1.IsConnecting && !_connectionManager.IsConnected && !_connectionManager.IsConnecting))
+        {
+            IConnectionIntent t1Intent = new ConnectionIntent(SingleCountryLocationIntent.From(normalizedCode));
+            await _connectionManager.ConnectAsync(VpnTriggerDimension.Map, t1Intent);
+            return $"Connecting primary slot T1 to {normalizedCode}.";
+        }
+
+        if (existing is not null)
+        {
+            if (existing.IsConnected || existing.IsConnecting)
+            {
+                return $"{existing.SlotId} ({normalizedCode}) is already {(existing.IsConnected ? "connected" : "connecting")}.";
+            }
+
+            bool ok = await ConnectSlotAsync(existing.SlotId);
+            return ok
+                ? $"Connected {existing.SlotId} ({normalizedCode}) alongside T1."
+                : (existing.LastError ?? $"Failed to connect {existing.SlotId} ({normalizedCode}).");
+        }
+
+        if (slotCount >= MultiTunnelSlotConfig.MaxSlots)
+        {
+            return $"All {MultiTunnelSlotConfig.MaxSlots} Multi-Tunnel slots are in use. Disconnect or remove a slot before adding {normalizedCode}.";
+        }
+
+        MultiTunnelSlotConfig? added = await AddSlotAsync(normalizedCode, $"{normalizedCode}#Fastest");
+        if (added is null)
+        {
+            return $"Could not allocate a Multi-Tunnel slot for {normalizedCode}.";
+        }
+
+        bool connected = await ConnectSlotAsync(added.SlotId);
+        return connected
+            ? $"Added and connected {added.SlotId} ({normalizedCode}) alongside T1."
+            : (added.LastError ?? $"Added {added.SlotId} ({normalizedCode}), but connection failed.");
     }
 
     public async Task AddRuleAsync(MultiTunnelRuleConfig rule)
@@ -579,6 +741,7 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
     private void UpdatePrimarySlotFromConnectionManager()
     {
+        bool shouldSync;
         lock (_lock)
         {
             MultiTunnelSlotConfig? t1 = _config.Slots.FirstOrDefault(s =>
@@ -588,8 +751,16 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                 return;
             }
 
+            t1.IsConnecting = _connectionManager.IsConnecting;
             t1.IsConnected = _connectionManager.IsConnected;
-            if (_connectionManager.CurrentConnectionDetails is { } details)
+
+            if (_connectionManager.IsConnected || _connectionManager.IsConnecting)
+            {
+                t1.LastError = null;
+            }
+
+            // Only update T1 endpoint metadata once the primary tunnel is actually connected.
+            if (_connectionManager.IsConnected && _connectionManager.CurrentConnectionDetails is { } details)
             {
                 t1.CountryCode = details.ExitCountryCode;
                 t1.ServerName = details.ServerName;
@@ -599,10 +770,14 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             }
 
             NormalizeAndPersistLocked();
+            shouldSync = !_connectionManager.IsConnecting;
         }
 
         NotifyChanged();
-        SyncPolicyToServiceAsync().FireAndForget();
+        if (shouldSync)
+        {
+            SyncPolicyToServiceAsync().FireAndForget();
+        }
     }
 
     private void LoadFromSettings()
@@ -644,6 +819,13 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             if (_config.Slots.Count == 0 || !_config.Slots.Any(s => string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase)))
             {
                 _config.Slots.Insert(0, MultiTunnelSlotConfig.CreateDefault(0, "SG", "SG#Fastest", "Singapore"));
+            }
+
+            foreach (MultiTunnelSlotConfig slot in _config.Slots)
+            {
+                slot.IsConnected = false;
+                slot.IsConnecting = false;
+                slot.LastError = null;
             }
 
             if (_config.Rules.Count == 0)
