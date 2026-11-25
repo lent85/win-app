@@ -118,3 +118,31 @@ public class RoutingDecisionIpcEntity
     [DataMember(Order = 9)] public uint WfpFilterWeight { get; set; }
     [DataMember(Order = 10)] public string Explanation { get; set; } = string.Empty;
 }
+
+[DataContract]
+public class MultiTunnelSlotConnectionRequestIpcEntity
+{
+    [DataMember(Order = 1)] public string SlotId { get; set; } = string.Empty;
+    [DataMember(Order = 2)] public int SlotIndex { get; set; }
+    [DataMember(Order = 3)] public string ClientIpv4Address { get; set; } = "10.3.0.2";
+    [DataMember(Order = 4)] public string ServerGatewayIpv4Address { get; set; } = "10.3.0.1";
+    [DataMember(Order = 5)] public string CountryCode { get; set; } = string.Empty;
+    [DataMember(Order = 6)] public string ServerName { get; set; } = string.Empty;
+    [DataMember(Order = 7)] public ConnectionRequestIpcEntity? ConnectionRequest { get; set; }
+}
+
+[DataContract]
+public class MultiTunnelSlotConnectionResultIpcEntity
+{
+    [DataMember(Order = 1)] public bool Success { get; set; }
+    [DataMember(Order = 2)] public string SlotId { get; set; } = string.Empty;
+    [DataMember(Order = 3)] public string ConnectedServerName { get; set; } = string.Empty;
+    [DataMember(Order = 4)] public string ConnectedEntryIp { get; set; } = string.Empty;
+    [DataMember(Order = 5)] public string ErrorMessage { get; set; } = string.Empty;
+}
+
+[DataContract]
+public class MultiTunnelSlotDisconnectionRequestIpcEntity
+{
+    [DataMember(Order = 1)] public string SlotId { get; set; } = string.Empty;
+}

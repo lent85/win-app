@@ -165,7 +165,7 @@ the Free Software Foundation, either version 3 of the License, or
 
                             <Grid ColumnSpacing="6">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="84" />
+                                    <ColumnDefinition Width="96" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -259,7 +259,7 @@ the Free Software Foundation, either version 3 of the License, or
                                                 <Button Grid.Column="5"
                                                         Padding="8,3"
                                                         Click="OnConnectSlotClick"
-                                                        Content="Connect"
+                                                        Content="{x:Bind ConnectButtonText}"
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Tag="{x:Bind SlotId}" />
 

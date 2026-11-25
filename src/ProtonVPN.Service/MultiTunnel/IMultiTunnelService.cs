@@ -9,6 +9,8 @@
  * (at your option) any later version.
  */
 
+using System.Threading;
+using System.Threading.Tasks;
 using ProtonVPN.Common.Core.Networking;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 
@@ -20,6 +22,8 @@ public interface IMultiTunnelService
     void ApplyPolicy(MultiTunnelPolicyIpcEntity policy);
     MultiTunnelPolicyIpcEntity GetCurrentPolicy();
     RoutingDecisionIpcEntity EvaluateTraffic(TrafficQueryIpcEntity query);
+    Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(MultiTunnelSlotConnectionRequestIpcEntity request, CancellationToken cancelToken);
+    Task DisconnectSlotAsync(string slotId, CancellationToken cancelToken);
     void OnVpnConnected(VpnState state);
     void OnVpnDisconnected(VpnState state, bool isReconnecting);
     void OnServiceStop();

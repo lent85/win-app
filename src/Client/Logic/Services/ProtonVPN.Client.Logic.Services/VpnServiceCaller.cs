@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -96,5 +96,16 @@ public class VpnServiceCaller : ServiceCallerBase<IVpnController>, IVpnServiceCa
     public Task<Result<RoutingDecisionIpcEntity>> EvaluateMultiTunnelTrafficAsync(TrafficQueryIpcEntity query)
     {
         return InvokeAsync((c, ct) => c.EvaluateMultiTunnelTraffic(query, ct));
+    }
+
+    public Task<Result<MultiTunnelSlotConnectionResultIpcEntity>> ConnectMultiTunnelSlotAsync(MultiTunnelSlotConnectionRequestIpcEntity request)
+    {
+        return InvokeAsync((c, ct) => c.ConnectMultiTunnelSlot(request, ct));
+    }
+
+    public Task DisconnectMultiTunnelSlotAsync(string slotId)
+    {
+        return InvokeAsync((c, ct) => c.DisconnectMultiTunnelSlot(
+            new MultiTunnelSlotDisconnectionRequestIpcEntity { SlotId = slotId }, ct).Wrap());
     }
 }

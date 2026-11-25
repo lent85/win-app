@@ -51,6 +51,7 @@ public sealed class MultiTunnelSlotItem
     public required string ClientIpv4 { get; init; }
     public required string StatusText { get; init; }
     public bool IsConnected { get; init; }
+    public string ConnectButtonText => IsConnected ? "Disconnect" : "Connect";
     public required bool CanRemove { get; init; }
     public required string SlotSummary { get; init; }
 }
@@ -310,13 +311,19 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     {
         MultiTunnelSlotConfig? slot = _multiTunnelManager.Slots.FirstOrDefault(s =>
             string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
-        if (slot is null || string.IsNullOrWhiteSpace(slot.CountryCode))
+        if (slot is null)
         {
             return;
         }
 
-        IConnectionIntent intent = new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
-        await ConnectionManager.ConnectAsync(VpnTriggerDimension.CountriesCountry, intent);
+        if (slot.IsConnected)
+        {
+            await _multiTunnelManager.DisconnectSlotAsync(slot.SlotId);
+        }
+        else
+        {
+            await _multiTunnelManager.ConnectSlotAsync(slot.SlotId);
+        }
     }
 
     public Task RemoveSlotAsync(string slotId)

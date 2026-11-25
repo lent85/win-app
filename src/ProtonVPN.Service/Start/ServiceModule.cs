@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -96,6 +96,7 @@ internal class ServiceModule : Module
         builder.RegisterType<SplitTunnelClient>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<MultiTunnelOrchestrator>().AsSelf().SingleInstance();
         builder.RegisterType<MultiTunnelWfpManager>().As<IMultiTunnelWfpManager>().AsSelf().SingleInstance();
+        builder.RegisterType<MultiTunnelSlotRunner>().As<IMultiTunnelSlotRunner>().SingleInstance();
         builder.RegisterType<MultiTunnelService>().As<IMultiTunnelService>().SingleInstance();
         builder.RegisterType<HttpClients>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<FeedUrlProvider>().AsImplementedInterfaces().SingleInstance();

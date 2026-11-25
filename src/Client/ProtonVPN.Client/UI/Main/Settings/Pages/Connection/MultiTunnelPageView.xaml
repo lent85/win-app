@@ -163,7 +163,7 @@ the Free Software Foundation, either version 3 of the License, or
 
                                         <Button Grid.Column="3"
                                                 Click="OnConnectSlotClick"
-                                                Content="Connect"
+                                                Content="{x:Bind ConnectButtonText}"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="{x:Bind SlotId}" />
 

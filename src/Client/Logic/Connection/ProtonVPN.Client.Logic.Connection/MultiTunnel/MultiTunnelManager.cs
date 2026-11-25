@@ -14,7 +14,10 @@ using System.Text.Json;
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
+using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Locations.Countries;
 using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
+using ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators;
 using ProtonVPN.Client.Logic.Services.Contracts;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Common.Core.Extensions;
@@ -23,6 +26,7 @@ using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.ConnectionLogs;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
+using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
 namespace ProtonVPN.Client.Logic.Connection.MultiTunnel;
 
@@ -41,6 +45,7 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
     private readonly IVpnServiceCaller _vpnServiceCaller;
     private readonly IConnectionManager _connectionManager;
     private readonly IEventMessageSender _eventMessageSender;
+    private readonly IConnectionRequestCreator? _connectionRequestCreator;
 
     private readonly object _lock = new();
     private MultiTunnelPolicyConfig _config = new();
@@ -91,13 +96,15 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         ISettings settings,
         IVpnServiceCaller vpnServiceCaller,
         IConnectionManager connectionManager,
-        IEventMessageSender eventMessageSender)
+        IEventMessageSender eventMessageSender,
+        IConnectionRequestCreator? connectionRequestCreator = null)
     {
         _logger = logger;
         _settings = settings;
         _vpnServiceCaller = vpnServiceCaller;
         _connectionManager = connectionManager;
         _eventMessageSender = eventMessageSender;
+        _connectionRequestCreator = connectionRequestCreator;
 
         LoadFromSettings();
     }
@@ -235,6 +242,123 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             }
 
             NormalizeAndPersistLocked();
+        }
+
+        NotifyChanged();
+        await SyncPolicyToServiceAsync();
+    }
+
+    public async Task<bool> ConnectSlotAsync(string slotId)
+    {
+        MultiTunnelSlotConfig? slot;
+        lock (_lock)
+        {
+            slot = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (slot is null || string.IsNullOrWhiteSpace(slot.CountryCode))
+        {
+            return false;
+        }
+
+        IConnectionIntent intent = new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
+
+        if (string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase))
+        {
+            await _connectionManager.ConnectAsync(VpnTriggerDimension.CountriesCountry, intent);
+            return true;
+        }
+
+        if (_connectionRequestCreator is null)
+        {
+            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Cannot connect secondary slot {slot.SlotId} without IConnectionRequestCreator.");
+            return false;
+        }
+
+        try
+        {
+            ConnectionRequestIpcEntity vpnRequest = await _connectionRequestCreator.CreateAsync(intent);
+            MultiTunnelSlotConnectionRequestIpcEntity slotRequest = new()
+            {
+                SlotId = slot.SlotId,
+                SlotIndex = slot.SlotIndex,
+                ClientIpv4Address = slot.ClientIpv4,
+                ServerGatewayIpv4Address = slot.ServerGatewayIpv4,
+                CountryCode = slot.CountryCode,
+                ServerName = slot.ServerName,
+                ConnectionRequest = vpnRequest,
+            };
+
+            Result<MultiTunnelSlotConnectionResultIpcEntity> ipcResult = await _vpnServiceCaller.ConnectMultiTunnelSlotAsync(slotRequest);
+            if (!ipcResult.Success || ipcResult.Value is null || !ipcResult.Value.Success)
+            {
+                _logger.Warn<ConnectionLog>($"MultiTunnelManager: Failed to connect slot {slot.SlotId}: {ipcResult.Value?.ErrorMessage ?? "IPC failure"}");
+                return false;
+            }
+
+            lock (_lock)
+            {
+                MultiTunnelSlotConfig? target = _config.Slots.FirstOrDefault(s =>
+                    string.Equals(s.SlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase));
+                if (target is not null)
+                {
+                    target.IsConnected = true;
+                    if (!string.IsNullOrWhiteSpace(ipcResult.Value.ConnectedServerName))
+                    {
+                        target.ServerName = ipcResult.Value.ConnectedServerName;
+                    }
+                    if (!string.IsNullOrWhiteSpace(ipcResult.Value.ConnectedEntryIp))
+                    {
+                        target.EntryIp = ipcResult.Value.ConnectedEntryIp;
+                        target.ExitIp = ipcResult.Value.ConnectedEntryIp;
+                    }
+                    NormalizeAndPersistLocked();
+                }
+            }
+
+            NotifyChanged();
+            await SyncPolicyToServiceAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error<ConnectionLog>($"MultiTunnelManager: Error connecting slot {slot.SlotId}.", ex);
+            return false;
+        }
+    }
+
+    public async Task DisconnectSlotAsync(string slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return;
+        }
+
+        if (string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
+        {
+            await _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+            return;
+        }
+
+        try
+        {
+            await _vpnServiceCaller.DisconnectMultiTunnelSlotAsync(slotId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Error disconnecting slot {slotId}: {ex.Message}");
+        }
+
+        lock (_lock)
+        {
+            MultiTunnelSlotConfig? target = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
+            if (target is not null)
+            {
+                target.IsConnected = false;
+                NormalizeAndPersistLocked();
+            }
         }
 
         NotifyChanged();

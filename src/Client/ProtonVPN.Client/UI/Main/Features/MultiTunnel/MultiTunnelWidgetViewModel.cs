@@ -183,13 +183,19 @@ public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
     {
         MultiTunnelSlotConfig? slot = _multiTunnelManager.Slots.FirstOrDefault(s =>
             string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
-        if (slot is null || string.IsNullOrWhiteSpace(slot.CountryCode))
+        if (slot is null)
         {
             return;
         }
 
-        IConnectionIntent intent = new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
-        await ConnectionManager.ConnectAsync(VpnTriggerDimension.CountriesCountry, intent);
+        if (slot.IsConnected)
+        {
+            await _multiTunnelManager.DisconnectSlotAsync(slot.SlotId);
+        }
+        else
+        {
+            await _multiTunnelManager.ConnectSlotAsync(slot.SlotId);
+        }
     }
 
     private void RefreshState()

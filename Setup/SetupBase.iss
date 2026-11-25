@@ -1,4 +1,6 @@
-#define MyAppVersion "4.0.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "4.0.0"
+#endif
 #define MyAppName "Proton VPN" 
 #define ClientName "ProtonVPN.Client"
 #define MyAppExeName "ProtonVPN.Client.exe"
@@ -29,7 +31,9 @@
 
 #define ProtonDriveUpgradeCode "{F3B95BD2-1311-4B82-8B4A-B9EB7C0500ED}"
 
-#define Hash ""
+#ifndef Hash
+  #define Hash ""
+#endif
 #define VersionFolder "v" + MyAppVersion
 #define DisableAutoUpdateInstallerArg "/DISABLEAUTOUPDATE"
 #define DisableAutoUpdateClientArg "-DisableAutoUpdate"
@@ -737,8 +741,47 @@ begin
       Log(name + ' startup record does not exist.');
 end;
 
+procedure StopRunningServicesAndProcesses();
+var
+  res: Integer;
+  i: Integer;
+  Processes: array of String;
+begin
+  Log('Stopping existing ProtonVPN services and processes before file replacement...');
+  Exec('sc.exe', 'stop "{#WireGuardServiceName}"', '', SW_HIDE, ewWaitUntilTerminated, res);
+  Log('sc stop {#WireGuardServiceName} returned: ' + IntToStr(res));
+
+  Exec('sc.exe', 'stop "{#ServiceName}"', '', SW_HIDE, ewWaitUntilTerminated, res);
+  Log('sc stop {#ServiceName} returned: ' + IntToStr(res));
+
+  Sleep(1000);
+
+  Processes := [
+    '{#MyAppExeName}',
+    '{#LegacyMyAppExeName}',
+    '{#LauncherExeName}',
+    '{#ServiceExe}',
+    '{#WireGuardServiceExe}',
+    'ProtonVPN.NrptWatchdog.exe',
+    'openvpn.exe'
+  ];
+
+  for i := 0 to GetArrayLength(Processes) - 1 do
+  begin
+    if IsProcessRunning(Processes[i]) then
+    begin
+      Log('Killing running process: ' + Processes[i]);
+      Exec('taskkill.exe', '/f /im "' + Processes[i] + '"', '', SW_HIDE, ewWaitUntilTerminated, res);
+      Log('taskkill ' + Processes[i] + ' returned: ' + IntToStr(res));
+    end;
+  end;
+
+  Sleep(500);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
+    StopRunningServicesAndProcesses();
     DeleteNonRunningVersions(ExpandConstant('{app}'));
 
     Log('Trying to update taskbar icon path if exists');

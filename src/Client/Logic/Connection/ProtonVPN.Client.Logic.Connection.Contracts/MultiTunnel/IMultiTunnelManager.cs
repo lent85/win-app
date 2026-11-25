@@ -29,6 +29,8 @@ public interface IMultiTunnelManager
     Task<MultiTunnelSlotConfig?> AddSlotAsync(string countryCode, string serverName, string city = "", string entryIp = "", string exitIp = "");
     Task UpdateSlotLocationAsync(string slotId, string countryCode, string serverName, string city = "", string entryIp = "", string exitIp = "");
     Task RemoveSlotAsync(string slotId);
+    Task<bool> ConnectSlotAsync(string slotId);
+    Task DisconnectSlotAsync(string slotId);
 
     Task AddRuleAsync(MultiTunnelRuleConfig rule);
     Task UpdateRuleAsync(MultiTunnelRuleConfig rule);

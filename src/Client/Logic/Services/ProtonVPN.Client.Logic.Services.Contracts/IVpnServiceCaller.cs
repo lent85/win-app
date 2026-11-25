@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -44,4 +44,6 @@ public interface IVpnServiceCaller
     Task ApplyMultiTunnelPolicyAsync(MultiTunnelPolicyIpcEntity policy);
     Task<Result<MultiTunnelPolicyIpcEntity>> GetMultiTunnelPolicyAsync();
     Task<Result<RoutingDecisionIpcEntity>> EvaluateMultiTunnelTrafficAsync(TrafficQueryIpcEntity query);
+    Task<Result<MultiTunnelSlotConnectionResultIpcEntity>> ConnectMultiTunnelSlotAsync(MultiTunnelSlotConnectionRequestIpcEntity request);
+    Task DisconnectMultiTunnelSlotAsync(string slotId);
 }

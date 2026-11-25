@@ -13,6 +13,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using ProtonVPN.Common.Core.Networking;
 using ProtonVPN.Configurations.Contracts;
 using ProtonVPN.Logging.Contracts;
@@ -35,6 +37,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private readonly ISystemNetworkInterfaces _networkInterfaces;
     private readonly IConfiguration _config;
     private readonly IServiceSettings _serviceSettings;
+    private readonly IMultiTunnelSlotRunner _slotRunner;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, TunnelSlotStateIpcEntity> _configuredSlotMeta = new(StringComparer.OrdinalIgnoreCase);
@@ -62,7 +65,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
         INetworkUtilities networkUtilities,
         ISystemNetworkInterfaces networkInterfaces,
         IConfiguration config,
-        IServiceSettings serviceSettings)
+        IServiceSettings serviceSettings,
+        IMultiTunnelSlotRunner? slotRunner = null)
     {
         _logger = logger;
         _orchestrator = orchestrator;
@@ -72,6 +76,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
         _networkInterfaces = networkInterfaces;
         _config = config;
         _serviceSettings = serviceSettings;
+        _slotRunner = slotRunner!;
     }
 
     public void ApplyPolicy(MultiTunnelPolicyIpcEntity policy)
@@ -237,8 +242,53 @@ public sealed class MultiTunnelService : IMultiTunnelService
         }
     }
 
+    public async Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(
+        MultiTunnelSlotConnectionRequestIpcEntity request,
+        CancellationToken cancelToken)
+    {
+        MultiTunnelSlotConnectionResultIpcEntity result = _slotRunner is not null
+            ? await _slotRunner.ConnectSlotAsync(request, cancelToken).ConfigureAwait(false)
+            : new MultiTunnelSlotConnectionResultIpcEntity { Success = false, SlotId = request.SlotId, ErrorMessage = "Slot runner unavailable." };
+
+        if (result.Success)
+        {
+            lock (_lock)
+            {
+                if (_isEnabled)
+                {
+                    ReapplyWfpPolicySafe();
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public async Task DisconnectSlotAsync(string slotId, CancellationToken cancelToken)
+    {
+        if (_slotRunner is not null)
+        {
+            await _slotRunner.DisconnectSlotAsync(slotId, cancelToken).ConfigureAwait(false);
+        }
+
+        lock (_lock)
+        {
+            bool anyConnected = _orchestrator.GetSlotStates().Values.Any(s => s.IsConnected);
+            if (_isEnabled && anyConnected)
+            {
+                ReapplyWfpPolicySafe();
+            }
+            else
+            {
+                _wfpManager.Disable();
+            }
+        }
+    }
+
     public void OnServiceStop()
     {
+        _slotRunner?.DisconnectAllAsync().GetAwaiter().GetResult();
+
         lock (_lock)
         {
             _wfpManager.Disable();

@@ -140,7 +140,7 @@ the Free Software Foundation, either version 3 of the License, or
                                         <Button Grid.Column="4"
                                                 Padding="8,4"
                                                 Click="OnConnectSlotClick"
-                                                Content="Connect"
+                                                Content="{x:Bind ConnectButtonText}"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="{x:Bind SlotId}" />
                                     </Grid>
