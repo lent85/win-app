@@ -22,6 +22,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Win32;
 
 namespace ProtonVPN.Common.Core.Helpers;
 
@@ -109,7 +110,8 @@ public static partial class CustomBuildInfoLoader
     public static InstalledBuildSnapshot Load(
         string? baseDirectory = null,
         Assembly? assembly = null,
-        string? installedRootDirectory = null)
+        string? installedRootDirectory = null,
+        string? registeredServiceExecutablePath = null)
     {
         string baseDir = string.IsNullOrWhiteSpace(baseDirectory)
             ? AppContext.BaseDirectory
@@ -184,9 +186,17 @@ public static partial class CustomBuildInfoLoader
                                TryParseUtcDateTime(changelog?.BuiltAtUtc) ??
                                TryGetAssemblyLastWriteUtc(targetAssembly);
 
-        string? installedServiceVersion = TryReadFileVersion(Path.Combine(baseDir, "ProtonVPNService.exe"));
+        string? serviceExePath = registeredServiceExecutablePath is not null
+            ? registeredServiceExecutablePath
+            : TryResolveRegisteredServiceExePath();
+        string? installedServiceVersion = TryReadFileVersion(serviceExePath);
         (string? newestInstalledFolderName, string? newestInstalledVersion, string? newestInstalledServiceVersion) =
             FindNewestInstalledVersion(installRoot);
+
+        if (string.IsNullOrWhiteSpace(installedServiceVersion))
+        {
+            installedServiceVersion = TryReadFileVersion(Path.Combine(baseDir, "ProtonVPNService.exe"));
+        }
 
         if (string.IsNullOrWhiteSpace(installedServiceVersion))
         {
@@ -217,8 +227,13 @@ public static partial class CustomBuildInfoLoader
             installFolderName = "Dev build";
         }
 
+        string expectedServiceFileVersion = FirstNonEmpty(
+            buildInfo?.Win32FileVersion,
+            assemblyFileVersion,
+            runningBuildVersion) ?? runningBuildVersion;
+
         bool hasServiceMismatch = !string.IsNullOrWhiteSpace(installedServiceVersion) &&
-                                  !string.Equals(installedServiceVersion.Trim(), runningBuildVersion.Trim(), StringComparison.OrdinalIgnoreCase);
+                                  !string.Equals(installedServiceVersion.Trim(), expectedServiceFileVersion.Trim(), StringComparison.OrdinalIgnoreCase);
 
         int customCommitCount = buildInfo?.CustomCommitCount is > 0
             ? buildInfo.CustomCommitCount.Value
@@ -311,11 +326,46 @@ public static partial class CustomBuildInfoLoader
         }
     }
 
-    private static string? TryReadFileVersion(string executablePath)
+    private static string? TryResolveRegisteredServiceExePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            using RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\ProtonVPN Service");
+            string? imagePath = key?.GetValue("ImagePath") as string;
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                return null;
+            }
+
+            string trimmed = imagePath.Trim();
+            if (trimmed.StartsWith('"'))
+            {
+                int closingQuote = trimmed.IndexOf('"', 1);
+                if (closingQuote > 1)
+                {
+                    return trimmed[1..closingQuote];
+                }
+            }
+
+            int exeIdx = trimmed.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            return exeIdx >= 0 ? trimmed[..(exeIdx + 4)].Trim('"') : trimmed;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadFileVersion(string? executablePath)
     {
         try
         {
-            if (!File.Exists(executablePath))
+            if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
             {
                 return null;
             }

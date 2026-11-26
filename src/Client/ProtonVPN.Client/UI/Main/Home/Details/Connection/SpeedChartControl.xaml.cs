@@ -33,13 +33,13 @@ public sealed record SlotSpeedChartSeries(
 public sealed partial class SpeedChartControl
 {
     public static readonly DependencyProperty LowerBoundProperty =
-        DependencyProperty.Register(nameof(LowerBound), typeof(double), typeof(SpeedChartControl), new PropertyMetadata(0.0));
+        DependencyProperty.Register(nameof(LowerBound), typeof(double), typeof(SpeedChartControl), new PropertyMetadata(0.0, OnBoundsChanged));
 
     public static readonly DependencyProperty MidpointProperty =
         DependencyProperty.Register(nameof(Midpoint), typeof(double), typeof(SpeedChartControl), new PropertyMetadata(50.0));
 
     public static readonly DependencyProperty UpperBoundProperty =
-        DependencyProperty.Register(nameof(UpperBound), typeof(double), typeof(SpeedChartControl), new PropertyMetadata(100.0));
+        DependencyProperty.Register(nameof(UpperBound), typeof(double), typeof(SpeedChartControl), new PropertyMetadata(100.0, OnBoundsChanged));
 
     public static readonly DependencyProperty DownloadSpeedHistoryProperty =
         DependencyProperty.Register(nameof(DownloadSpeedHistory), typeof(IReadOnlyList<double>), typeof(SpeedChartControl), new PropertyMetadata(null, OnDownloadSpeedHistoryChanged));
@@ -89,6 +89,16 @@ public sealed partial class SpeedChartControl
     public SpeedChartControl()
     {
         InitializeComponent();
+    }
+
+    private static void OnBoundsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is SpeedChartControl chart)
+        {
+            chart.UpdateDownloadChart();
+            chart.UpdateUploadChart();
+            chart.UpdateMultiSeriesChart();
+        }
     }
 
     private static void OnDownloadSpeedHistoryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

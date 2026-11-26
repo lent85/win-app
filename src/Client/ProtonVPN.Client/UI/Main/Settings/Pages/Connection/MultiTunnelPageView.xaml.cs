@@ -51,19 +51,30 @@ public sealed partial class MultiTunnelPageView : IContextAware
         PageContentHost.ResetContentScroll();
     }
 
-    private async void OnConnectSlotClick(object sender, RoutedEventArgs e)
+    private static async void RunSafeAsync(Func<Task> action)
     {
-        if (sender is FrameworkElement { Tag: string slotId })
+        try
         {
-            await ViewModel.ConnectSlotAsync(slotId);
+            await action();
+        }
+        catch
+        {
         }
     }
 
-    private async void OnRemoveSlotClick(object sender, RoutedEventArgs e)
+    private void OnConnectSlotClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string slotId })
         {
-            await ViewModel.RemoveSlotAsync(slotId);
+            RunSafeAsync(() => ViewModel.ConnectSlotAsync(slotId));
+        }
+    }
+
+    private void OnRemoveSlotClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            RunSafeAsync(() => ViewModel.RemoveSlotAsync(slotId));
         }
     }
 
@@ -84,11 +95,11 @@ public sealed partial class MultiTunnelPageView : IContextAware
         }
     }
 
-    private async void OnQuickAssignPresetClick(object sender, RoutedEventArgs e)
+    private void OnQuickAssignPresetClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string presetId })
         {
-            await ViewModel.QuickTogglePresetForTargetAsync(presetId);
+            RunSafeAsync(() => ViewModel.QuickTogglePresetForTargetAsync(presetId));
         }
     }
 
@@ -100,27 +111,28 @@ public sealed partial class MultiTunnelPageView : IContextAware
         }
     }
 
-    private async void OnRuleEnabledClick(object sender, RoutedEventArgs e)
+    private void OnRuleEnabledClick(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox { Tag: Guid ruleId } cb)
         {
-            await ViewModel.SetRuleEnabledAsync(ruleId, cb.IsChecked == true);
+            bool isEnabled = cb.IsChecked == true;
+            RunSafeAsync(() => ViewModel.SetRuleEnabledAsync(ruleId, isEnabled));
         }
     }
 
-    private async void OnMoveRuleUpClick(object sender, RoutedEventArgs e)
+    private void OnMoveRuleUpClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.MoveRuleUpAsync(ruleId);
+            RunSafeAsync(() => ViewModel.MoveRuleUpAsync(ruleId));
         }
     }
 
-    private async void OnMoveRuleDownClick(object sender, RoutedEventArgs e)
+    private void OnMoveRuleDownClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.MoveRuleDownAsync(ruleId);
+            RunSafeAsync(() => ViewModel.MoveRuleDownAsync(ruleId));
         }
     }
 
@@ -132,11 +144,11 @@ public sealed partial class MultiTunnelPageView : IContextAware
         }
     }
 
-    private async void OnDeleteRuleClick(object sender, RoutedEventArgs e)
+    private void OnDeleteRuleClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.DeleteRuleAsync(ruleId);
+            RunSafeAsync(() => ViewModel.DeleteRuleAsync(ruleId));
         }
     }
 

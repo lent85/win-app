@@ -496,7 +496,7 @@ the Free Software Foundation, either version 3 of the License, or
                                        Text="Priority Selective Routing Rules (Top-Down First Match Wins)" />
                             <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Text="Higher rules get higher WFP filter weights (up to 60,000)." />
+                                       Text="Top 13 rules get distinct native WFP weights (14 down to 2); rules #13+ share weight 2." />
                         </StackPanel>
                         <Button Grid.Column="1"
                                 Command="{x:Bind ViewModel.ResetDefaultRulesCommand, Mode=OneTime}"

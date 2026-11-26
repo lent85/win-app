@@ -246,3 +246,6 @@ dist/
 *.deb
 *.rpm
 *.AppImage
+
+# Local indexers
+.codanna/

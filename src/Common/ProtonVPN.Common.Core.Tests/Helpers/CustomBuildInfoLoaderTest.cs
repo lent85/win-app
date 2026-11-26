@@ -71,7 +71,8 @@ public class CustomBuildInfoLoaderTest
             InstalledBuildSnapshot snapshot = CustomBuildInfoLoader.Load(
                 baseDirectory: versionDir,
                 assembly: typeof(CustomBuildInfoLoader).Assembly,
-                installedRootDirectory: tempRoot);
+                installedRootDirectory: tempRoot,
+                registeredServiceExecutablePath: string.Empty);
 
             snapshot.UpstreamBaseVersion.Should().Be("5.1.10");
             snapshot.CustomFullVersion.Should().Be("5.1.10.1959+g1234abc");
@@ -124,7 +125,8 @@ public class CustomBuildInfoLoaderTest
             InstalledBuildSnapshot snapshot = CustomBuildInfoLoader.Load(
                 baseDirectory: tempDevDir,
                 assembly: typeof(CustomBuildInfoLoader).Assembly,
-                installedRootDirectory: tempInstallRoot);
+                installedRootDirectory: tempInstallRoot,
+                registeredServiceExecutablePath: string.Empty);
 
             snapshot.UpstreamBaseVersion.Should().Be("5.1.10");
             snapshot.InstalledBuildVersion.Should().Be("5.1.10.1958");
@@ -148,5 +150,56 @@ public class CustomBuildInfoLoaderTest
         CustomBuildInfoLoader.ParseCommitCategory("chore: ignore artifacts").Should().Be("chore");
         CustomBuildInfoLoader.ParseCommitCategory("Update dependencies").Should().Be("change");
         CustomBuildInfoLoader.ParseCommitCategory(null).Should().Be("change");
+    }
+
+    [TestMethod]
+    public void Load_ComparesRegisteredServiceExecutableAgainstWin32FileVersion()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"pvpn-svc-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            string probeBinaryPath = typeof(CustomBuildInfoLoader).Assembly.Location;
+            string probeFileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(probeBinaryPath).FileVersion!;
+
+            File.WriteAllText(Path.Combine(tempRoot, "BUILD_INFO.json"), JsonSerializer.Serialize(new
+            {
+                baseVersion = "5.1.10",
+                buildNumber = 70000,
+                numericVersion = "5.1.10.70000",
+                win32FileVersion = probeFileVersion,
+                fullVersion = "5.1.10.70000+g1234abc",
+            }));
+
+            InstalledBuildSnapshot matchingSnapshot = CustomBuildInfoLoader.Load(
+                baseDirectory: tempRoot,
+                assembly: typeof(CustomBuildInfoLoader).Assembly,
+                installedRootDirectory: tempRoot,
+                registeredServiceExecutablePath: probeBinaryPath);
+
+            matchingSnapshot.HasServiceVersionMismatch.Should().BeFalse();
+
+            File.WriteAllText(Path.Combine(tempRoot, "BUILD_INFO.json"), JsonSerializer.Serialize(new
+            {
+                baseVersion = "5.1.10",
+                buildNumber = 70000,
+                numericVersion = "5.1.10.70000",
+                win32FileVersion = "5.1.10.9999",
+                fullVersion = "5.1.10.70000+g1234abc",
+            }));
+
+            InstalledBuildSnapshot mismatchSnapshot = CustomBuildInfoLoader.Load(
+                baseDirectory: tempRoot,
+                assembly: typeof(CustomBuildInfoLoader).Assembly,
+                installedRootDirectory: tempRoot,
+                registeredServiceExecutablePath: probeBinaryPath);
+
+            mismatchSnapshot.HasServiceVersionMismatch.Should().BeTrue();
+        }
+        finally
+        {
+            try { Directory.Delete(tempRoot, recursive: true); } catch { }
+        }
     }
 }

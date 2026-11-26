@@ -57,6 +57,7 @@ public partial class ConnectionDetailsPageViewModel : PageViewModelBase<IDetails
     private readonly INetworkTrafficManager _networkTrafficManager;
     private readonly IMultiTunnelManager _multiTunnelManager;
     private readonly IMultiTunnelTrafficManager _multiTunnelTrafficManager;
+    private string? _lastMetricTabsSignature;
 
     [ObservableProperty]
     private string? _serverIpAddress;
@@ -171,6 +172,7 @@ public partial class ConnectionDetailsPageViewModel : PageViewModelBase<IDetails
 
         if (!IsMultiTunnelMetricsBarVisible)
         {
+            _lastMetricTabsSignature = null;
             MetricSlotTabs.Clear();
             ProtocolOverrideText = null;
             ConnectionDetails? details = _connectionManager.CurrentConnectionDetails;
@@ -188,30 +190,35 @@ public partial class ConnectionDetailsPageViewModel : PageViewModelBase<IDetails
             selectedSlotId = "ALL";
         }
 
-        MetricSlotTabs.Clear();
-        MetricSlotTabs.Add(new ConnectionMetricSlotTab
+        string signature = $"{selectedSlotId}|{string.Join(",", connectedSlots.Select(s => $"{s.SlotId}:{s.CountryCode}"))}";
+        if (!string.Equals(signature, _lastMetricTabsSignature, StringComparison.Ordinal))
         {
-            SlotId = "ALL",
-            Label = $"All ({connectedSlots.Count})",
-            DotBrush = SlotColorBrushHelper.ToBrush("#FFFFFF"),
-            ShowDot = false,
-            IsSelected = string.Equals(selectedSlotId, "ALL", StringComparison.OrdinalIgnoreCase),
-        });
-
-        foreach (MultiTunnelSlotConfig slot in connectedSlots)
-        {
-            string label = string.IsNullOrWhiteSpace(slot.CountryCode)
-                ? slot.SlotId
-                : $"{slot.SlotId} · {slot.CountryCode}";
-
+            _lastMetricTabsSignature = signature;
+            MetricSlotTabs.Clear();
             MetricSlotTabs.Add(new ConnectionMetricSlotTab
             {
-                SlotId = slot.SlotId,
-                Label = label,
-                DotBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
-                ShowDot = true,
-                IsSelected = string.Equals(selectedSlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase),
+                SlotId = "ALL",
+                Label = $"All ({connectedSlots.Count})",
+                DotBrush = SlotColorBrushHelper.ToBrush("#FFFFFF"),
+                ShowDot = false,
+                IsSelected = string.Equals(selectedSlotId, "ALL", StringComparison.OrdinalIgnoreCase),
             });
+
+            foreach (MultiTunnelSlotConfig slot in connectedSlots)
+            {
+                string label = string.IsNullOrWhiteSpace(slot.CountryCode)
+                    ? slot.SlotId
+                    : $"{slot.SlotId} · {slot.CountryCode}";
+
+                MetricSlotTabs.Add(new ConnectionMetricSlotTab
+                {
+                    SlotId = slot.SlotId,
+                    Label = label,
+                    DotBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
+                    ShowDot = true,
+                    IsSelected = string.Equals(selectedSlotId, slot.SlotId, StringComparison.OrdinalIgnoreCase),
+                });
+            }
         }
 
         if (string.Equals(selectedSlotId, "ALL", StringComparison.OrdinalIgnoreCase))

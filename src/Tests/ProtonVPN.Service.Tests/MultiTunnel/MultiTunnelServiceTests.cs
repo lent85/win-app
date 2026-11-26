@@ -509,4 +509,183 @@ public class MultiTunnelServiceTests
             try { Directory.Delete(tempRoot, recursive: true); } catch { }
         }
     }
+
+    [TestMethod]
+    public async Task MultiTunnelSlotRunner_RejectsInvalidOrTraversalSlotIds()
+    {
+        IStaticConfiguration staticConfig = Substitute.For<IStaticConfiguration>();
+        IWireGuardConfigurations wgConfig = Substitute.For<IWireGuardConfigurations>();
+        wgConfig.ConfigFilePath.Returns("C:\\Temp\\ProtonVPN.conf");
+        staticConfig.WireGuard.Returns(wgConfig);
+
+        IServiceFactory serviceFactory = Substitute.For<IServiceFactory>();
+        MultiTunnelSlotRunner runner = new(
+            _logger,
+            staticConfig,
+            Substitute.For<IEntityMapper>(),
+            Substitute.For<IX25519KeyGenerator>(),
+            serviceFactory,
+            Substitute.For<IRoutingTableHelper>(),
+            Substitute.For<IIpv4GatewayResolver>(),
+            _orchestrator);
+
+        foreach (string badId in new[] { "../evil", "..\\evil", "T0", "T6", "T99", "abc", "" })
+        {
+            MultiTunnelSlotConnectionResultIpcEntity result = await runner.ConnectSlotAsync(
+                new MultiTunnelSlotConnectionRequestIpcEntity { SlotId = badId },
+                CancellationToken.None);
+            result.Success.Should().BeFalse();
+
+            await runner.DisconnectSlotAsync(badId, CancellationToken.None);
+        }
+
+        serviceFactory.DidNotReceiveWithAnyArgs().Get(default!);
+    }
+
+    [TestMethod]
+    public async Task MultiTunnelSlotRunner_ReturnsFailureAndCleansUpWhenAdapterTimesOut()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"pvpn-slot-timeout-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            IStaticConfiguration staticConfig = Substitute.For<IStaticConfiguration>();
+            IWireGuardConfigurations wgConfig = Substitute.For<IWireGuardConfigurations>();
+            wgConfig.ConfigFilePath.Returns(Path.Combine(tempDir, "ProtonVPN.conf"));
+            wgConfig.ServicePath.Returns("C:\\Program Files\\Proton\\WireGuardService.exe");
+            wgConfig.ServiceName.Returns("ProtonVPN WireGuard");
+            staticConfig.WireGuard.Returns(wgConfig);
+            staticConfig.GetWireGuardHardwareId().Returns("ProtonVPN-WG");
+
+            IEntityMapper mapper = Substitute.For<IEntityMapper>();
+            mapper.Map<VpnServerIpcEntity, VpnHost>(Arg.Any<VpnServerIpcEntity[]>())
+                .Returns([new VpnHost("us-01.protonvpn.net", "185.159.158.10", string.Empty, new PublicKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.X25519), string.Empty, false, null)]);
+            mapper.Map<VpnCredentialsIpcEntity, VpnCredentials>(Arg.Any<VpnCredentialsIpcEntity>())
+                .Returns(new VpnCredentials(
+                    new AsymmetricKeyPair(
+                        new SecretKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.Ed25519),
+                        new PublicKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.Ed25519))));
+            mapper.Map<VpnConfigIpcEntity, VpnConfig>(Arg.Any<VpnConfigIpcEntity>())
+                .Returns(new VpnConfig(new VpnConfigParameters()));
+
+            IX25519KeyGenerator x25519 = Substitute.For<IX25519KeyGenerator>();
+            x25519.FromEd25519SecretKey(Arg.Any<SecretKey>())
+                .Returns(new SecretKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.X25519));
+
+            IService slotService = Substitute.For<IService>();
+            slotService.IsCreated().Returns(false);
+            slotService.IsRunning().Returns(true);
+            slotService.IsStopped().Returns(false);
+            slotService.StartAsync(Arg.Any<CancellationToken>()).Returns(true);
+            slotService.StopAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+            IServiceFactory serviceFactory = Substitute.For<IServiceFactory>();
+            serviceFactory.Get("ProtonVPN WireGuard T2").Returns(slotService);
+
+            IRoutingTableHelper routingHelper = Substitute.For<IRoutingTableHelper>();
+            IIpv4GatewayResolver gatewayResolver = Substitute.For<IIpv4GatewayResolver>();
+            INetworkInterface ethNic = Substitute.For<INetworkInterface>();
+            ethNic.Name.Returns("Ethernet");
+            ethNic.Index.Returns(7u);
+            ethNic.IsActive.Returns(true);
+            ethNic.DefaultGateway.Returns(IPAddress.Parse("192.168.1.1"));
+            ethNic.GetUnicastAddresses().Returns([new NetworkAddress(IPAddress.Parse("192.168.1.50"))]);
+
+            ISystemNetworkInterfaces networkInterfaces = Substitute.For<ISystemNetworkInterfaces>();
+            networkInterfaces.GetInterfaces().Returns([ethNic]);
+
+            IPermittedRemoteAddress permittedRemote = Substitute.For<IPermittedRemoteAddress>();
+
+            MultiTunnelSlotRunner runner = new(
+                _logger,
+                staticConfig,
+                mapper,
+                x25519,
+                serviceFactory,
+                routingHelper,
+                gatewayResolver,
+                _orchestrator,
+                permittedRemote,
+                networkInterfaces);
+
+            MultiTunnelSlotConnectionRequestIpcEntity req = new()
+            {
+                SlotId = "T2",
+                SlotIndex = 1,
+                ClientIpv4Address = "10.3.0.2",
+                ServerGatewayIpv4Address = "10.3.0.1",
+                CountryCode = "US",
+                ConnectionRequest = new ConnectionRequestIpcEntity
+                {
+                    Servers = [new VpnServerIpcEntity { Name = "us-01.protonvpn.net", Ip = "185.159.158.10" }],
+                    Credentials = new VpnCredentialsIpcEntity
+                    {
+                        ClientKeyPair = new AsymmetricKeyPairIpcEntity
+                        {
+                            SecretKey = new SecretKeyIpcEntity { Bytes = new byte[32], Base64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" },
+                            PublicKey = new PublicKeyIpcEntity { Bytes = new byte[32], Base64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" },
+                        },
+                    },
+                    Config = new VpnConfigIpcEntity(),
+                },
+            };
+
+            MultiTunnelSlotConnectionResultIpcEntity result = await runner.ConnectSlotAsync(req, CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorMessage.Should().Contain("Timed out");
+            _orchestrator.GetSlotStates()["T2"].IsConnected.Should().BeFalse();
+            routingHelper.Received().DeleteRoute("185.159.158.10", false);
+            permittedRemote.Received().Remove("185.159.158.10");
+            File.Exists(Path.Combine(tempDir, "ProtonVPN-T2.conf")).Should().BeFalse();
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public void MultiTunnelDnsRoutingTable_ClearRemovesStalePriorityEntries()
+    {
+        MultiTunnelDnsRoutingTable table = new();
+        SelectiveRoutingRule rule = new()
+        {
+            Id = Guid.NewGuid(),
+            PriorityOrder = 1,
+            Name = "Test",
+            DomainPattern = "example.com",
+            TargetType = RuleTargetType.Direct,
+        };
+        RoutingDecision decision = new(RuleTargetType.Direct, null, rule, false, false, false, 14, "test");
+        table.RegisterResolvedAddresses("example.com", decision, [new DnsResolvedRecord(IPAddress.Parse("93.184.216.34"), 300)]);
+
+        table.GetActiveAddressesByRule().Should().ContainKey(rule.Id);
+
+        table.Clear();
+
+        table.GetActiveAddressesByRule().Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void ApplyPolicy_WhenDisabled_DisablesWfp()
+    {
+        MultiTunnelService service = CreateService();
+        service.OnVpnConnected(new VpnState(
+            VpnStatus.Connected,
+            VpnError.None,
+            localIp: "10.2.0.2",
+            remoteIp: "185.159.1.10",
+            endpointPort: 51820,
+            vpnProtocol: VpnProtocol.WireGuardUdp));
+
+        service.ApplyPolicy(new MultiTunnelPolicyIpcEntity { IsMultiTunnelEnabled = true });
+        _wfpManager.ClearReceivedCalls();
+
+        service.ApplyPolicy(new MultiTunnelPolicyIpcEntity { IsMultiTunnelEnabled = false });
+
+        service.IsEnabled.Should().BeFalse();
+        _wfpManager.Received(1).Disable();
+    }
 }

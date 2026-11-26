@@ -26,6 +26,7 @@ using Timer = System.Timers.Timer;
 namespace ProtonVPN.Client.Logic.Connection.MultiTunnel;
 
 public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
+    IDisposable,
     IEventMessageReceiver<MultiTunnelPolicyChangedMessage>,
     IEventMessageReceiver<ConnectionStatusChangedMessage>
 {
@@ -87,6 +88,13 @@ public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
         _timer.Elapsed += OnTimerElapsed;
 
         UpdateTimerState();
+    }
+
+    public void Dispose()
+    {
+        _timer.Stop();
+        _timer.Elapsed -= OnTimerElapsed;
+        _timer.Dispose();
     }
 
     public void SelectMetricsSlot(string slotId)
@@ -235,24 +243,27 @@ public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
         try
         {
             MultiTunnelTrafficSnapshotIpcEntity? snapshot = null;
+            bool ipcSucceeded = false;
             try
             {
                 Result<MultiTunnelTrafficSnapshotIpcEntity> result = await _vpnServiceCaller.GetMultiTunnelNetworkTrafficAsync();
-                if (result.Success)
+                if (result is { Success: true, Value: not null })
                 {
                     snapshot = result.Value;
+                    ipcSucceeded = true;
                 }
             }
             catch
             {
             }
 
-            DateTime now = DateTime.UtcNow.TruncateToSeconds();
+            DateTime now = DateTime.UtcNow;
             IReadOnlyList<MultiTunnelSlotConfig> slots = _multiTunnelManager.Slots;
 
             Dictionary<string, SlotNetworkTrafficIpcEntity> ipcBySlot = (snapshot?.Slots ?? [])
                 .Where(s => !string.IsNullOrWhiteSpace(s.SlotId))
-                .ToDictionary(s => s.SlotId.ToUpperInvariant(), s => s, StringComparer.OrdinalIgnoreCase);
+                .GroupBy(s => s.SlotId.ToUpperInvariant(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
             lock (_lock)
             {
@@ -265,10 +276,12 @@ public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
                         continue;
                     }
 
+                    bool hasSample = false;
                     NetworkTraffic volume = NetworkTraffic.Zero;
-                    if (ipcBySlot.TryGetValue(slot.SlotId, out SlotNetworkTrafficIpcEntity? ipcSlot))
+                    if (ipcSucceeded && ipcBySlot.TryGetValue(slot.SlotId, out SlotNetworkTrafficIpcEntity? ipcSlot))
                     {
                         volume = new NetworkTraffic(ipcSlot.BytesDownloaded, ipcSlot.BytesUploaded, now);
+                        hasSample = true;
                     }
 
                     if (string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase) &&
@@ -277,6 +290,12 @@ public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
                     {
                         NetworkTraffic primaryVol = _primaryTrafficManager.GetVolume();
                         volume = new NetworkTraffic(primaryVol.BytesDownloaded, primaryVol.BytesUploaded, now);
+                        hasSample = true;
+                    }
+
+                    if (!hasSample)
+                    {
+                        continue;
                     }
 
                     UpdateTrackerSampleLocked(tracker, volume, now);
@@ -303,7 +322,7 @@ public sealed class MultiTunnelTrafficManager : IMultiTunnelTrafficManager,
         }
 
         double seconds = (now - tracker.LastVolume.Value.UtcDate).TotalSeconds;
-        if (seconds < 1.0)
+        if (seconds < 0.25)
         {
             return;
         }

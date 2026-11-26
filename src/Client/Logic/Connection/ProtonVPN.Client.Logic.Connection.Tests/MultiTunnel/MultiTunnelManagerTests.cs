@@ -369,4 +369,90 @@ public class MultiTunnelManagerTests
         Assert.IsTrue(removed);
         Assert.AreEqual(2, manager.Rules.Count);
     }
+
+    [TestMethod]
+    public async Task RemoveSlotAndDisable_DisconnectsConnectedSecondarySlots()
+    {
+        _vpnServiceCaller.ConnectMultiTunnelSlotAsync(Arg.Any<MultiTunnelSlotConnectionRequestIpcEntity>())
+            .Returns(ci => Result.Ok(new MultiTunnelSlotConnectionResultIpcEntity
+            {
+                Success = true,
+                SlotId = ci.Arg<MultiTunnelSlotConnectionRequestIpcEntity>().SlotId,
+                ConnectedServerName = "US#1",
+                ConnectedEntryIp = "185.159.158.10",
+            }));
+        _vpnServiceCaller.DisconnectMultiTunnelSlotAsync(Arg.Any<string>()).Returns(Task.CompletedTask);
+
+        ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators.IConnectionRequestCreator requestCreator =
+            Substitute.For<ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators.IConnectionRequestCreator>();
+        requestCreator.CreateAsync(Arg.Any<ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.IConnectionIntent>())
+            .Returns(new ConnectionRequestIpcEntity());
+
+        MultiTunnelManager manager = new(
+            _logger,
+            _settings,
+            _vpnServiceCaller,
+            _connectionManager,
+            _eventMessageSender,
+            requestCreator);
+
+        await manager.SetEnabledAsync(true);
+        await manager.AddSlotAsync("US", "US#1");
+        await manager.AddSlotAsync("JP", "JP#1");
+        Assert.IsTrue(await manager.ConnectSlotAsync("T2"));
+        Assert.IsTrue(await manager.ConnectSlotAsync("T3"));
+
+        await manager.RemoveSlotAsync("T2");
+        await _vpnServiceCaller.Received(1).DisconnectMultiTunnelSlotAsync("T2");
+        Assert.IsFalse(manager.Slots.Any(s => s.SlotId == "T2"));
+
+        await manager.SetEnabledAsync(false);
+        await _vpnServiceCaller.Received(1).DisconnectMultiTunnelSlotAsync("T3");
+        await _connectionManager.DidNotReceive().DisconnectAsync(Arg.Any<VpnTriggerDimension>());
+    }
+
+    [TestMethod]
+    public async Task DeletingAllRules_PersistsEmptyRulesAcrossReload()
+    {
+        MultiTunnelManager manager = CreateManager();
+        foreach (Guid id in manager.Rules.Select(r => r.Id).ToList())
+        {
+            await manager.DeleteRuleAsync(id);
+        }
+
+        Assert.AreEqual(0, manager.Rules.Count);
+
+        MultiTunnelManager reloaded = CreateManager();
+        Assert.AreEqual(0, reloaded.Rules.Count);
+    }
+
+    [TestMethod]
+    public async Task ReconcileWithServiceAsync_RestoresConnectedSecondarySlotState()
+    {
+        MultiTunnelManager manager = CreateManager();
+        await manager.AddSlotAsync("US", "US#Fastest");
+
+        _vpnServiceCaller.GetMultiTunnelPolicyAsync().Returns(Result.Ok(new MultiTunnelPolicyIpcEntity
+        {
+            IsMultiTunnelEnabled = true,
+            TunnelSlots =
+            [
+                new TunnelSlotStateIpcEntity
+                {
+                    SlotId = "T2",
+                    Status = VpnStatusIpcEntity.Connected,
+                    ServerName = "US-NY#10",
+                    EntryIp = "185.159.158.10",
+                    ExitIp = "185.159.158.10",
+                },
+            ],
+        }));
+
+        await manager.ReconcileWithServiceAsync();
+
+        MultiTunnelSlotConfig t2 = manager.Slots.First(s => s.SlotId == "T2");
+        Assert.IsTrue(t2.IsConnected);
+        Assert.AreEqual("US-NY#10", t2.ServerName);
+        Assert.AreEqual("185.159.158.10", t2.EntryIp);
+    }
 }

@@ -1093,6 +1093,12 @@ public sealed partial class MapControl
                 if (pin.IsOnHover())
                 {
                     pin.SetIsOnHover(false);
+                    if (ReferenceEquals(pin, _selectedPin))
+                    {
+                        _selectedPin = null;
+                        OverrideCursor(null);
+                        _countryCallout.Hide();
+                    }
                     StartPinScaleAnimations(pin, PinAnimationType.OnHoverToConnecting);
                 }
                 else
@@ -1179,6 +1185,10 @@ public sealed partial class MapControl
             pin.SetIsConnected(false);
             pin.SetIsOnHover(false);
         }
+
+        _selectedPin = null;
+        OverrideCursor(null);
+        _countryCallout.Hide();
     }
 
     private static void OnIsConnectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -1223,6 +1233,10 @@ public sealed partial class MapControl
 
     private void InvalidatePins()
     {
+        _selectedPin = null;
+        _activeAnimations.Clear();
+        _countryCallout.Hide();
+
         List<IFeature> features = [];
         Dictionary<string, MultiTunnelMapPin> multiTunnelLookup = BuildMultiTunnelPinLookup();
 

@@ -80,6 +80,11 @@ namespace ProtonVPN.NetworkFilter
             return new ProviderContext(providerContextId);
         }
 
+        public void DestroyProviderContext(ProviderContext providerContext)
+        {
+            IpFilterNative.DestroyProviderContext(Session.Handle, providerContext.Id);
+        }
+
         public Callout CreateCallout(DisplayData displayData, Guid key, Layer layer, bool persistent = false)
         {
             var calloutId = IpFilterNative.CreateCallout(

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -38,6 +38,7 @@ namespace ProtonVPN.NetworkFilter
         public void DestroyAllFilters()
         {
             IpFilterNative.DestroySublayerFilters(Session.Handle, _ipFilter.ProviderId, Id);
+            _filters.Clear();
         }
 
         public void DestroyFiltersByName(string name)

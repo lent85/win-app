@@ -193,12 +193,18 @@ public sealed class MultiTunnelDnsRoutingTable
         int removed = 0;
         foreach ((IPAddress ip, DynamicDomainRouteEntry entry) in _entriesByIp)
         {
-            if (entry.ExpiresAtUtc <= now && _entriesByIp.TryRemove(ip, out _))
+            if (entry.ExpiresAtUtc <= now &&
+                _entriesByIp.TryRemove(new KeyValuePair<IPAddress, DynamicDomainRouteEntry>(ip, entry)))
             {
                 removed++;
             }
         }
         return removed;
+    }
+
+    public void Clear()
+    {
+        _entriesByIp.Clear();
     }
 
     private static bool TryReadDomainName(ReadOnlySpan<byte> packet, ref int offset, out string domain)

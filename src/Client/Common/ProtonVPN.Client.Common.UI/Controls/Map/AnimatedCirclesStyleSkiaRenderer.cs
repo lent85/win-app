@@ -96,6 +96,11 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         IFeature feature,
         double layerOpacity)
     {
+        if (style.TransparentCircleRadius <= 0)
+        {
+            return;
+        }
+
         if ((feature.IsCurrentCountry() || feature.IsMultiTunnelConnected()) && !feature.IsOnHover())
         {
             SKColor baseColor;
@@ -119,16 +124,18 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
             centerColor = centerColor.WithAlpha((byte)(centerColor.Alpha * gradientOpacity));
             edgeColor = edgeColor.WithAlpha((byte)(edgeColor.Alpha * gradientOpacity));
 
+            using SKShader? shader = SKShader.CreateRadialGradient(
+                new SKPoint((float)screenPos.X, (float)screenPos.Y),
+                style.TransparentCircleRadius,
+                [centerColor, edgeColor],
+                [0.442708f, 1],
+                SKShaderTileMode.Clamp
+            );
+
             using SKPaint outerPaint = new SKPaint
             {
                 IsAntialias = true,
-                Shader = SKShader.CreateRadialGradient(
-                    new SKPoint((float)screenPos.X, (float)screenPos.Y),
-                    style.TransparentCircleRadius,
-                    [centerColor, edgeColor],
-                    [0.442708f, 1],
-                    SKShaderTileMode.Clamp
-                )
+                Shader = shader,
             };
 
             canvas.DrawCircle(

@@ -29,6 +29,7 @@ using ProtonVPN.Client.Logic.Servers.Contracts.Messages;
 using ProtonVPN.Client.Logic.Servers.Contracts.Models;
 using ProtonVPN.Client.UI.Main.Home.Details.Connection;
 using ProtonVPN.Client.UI.Main.Settings.Pages.Connection;
+using ProtonVPN.Common.Core.Extensions;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
@@ -99,7 +100,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         {
             if (SetProperty(ref _isMultiTunnelEnabled, value) && !_isRefreshing)
             {
-                _ = _multiTunnelManager.SetEnabledAsync(value);
+                _multiTunnelManager.SetEnabledAsync(value).FireAndForget();
             }
         }
     }
@@ -157,7 +158,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                 if (!_isRefreshing && !string.IsNullOrWhiteSpace(value) &&
                     Enum.TryParse(value, out RuleTargetTypeIpcEntity target))
                 {
-                    _ = _multiTunnelManager.SetDefaultRoutingAsync(target, SelectedDefaultTunnelId ?? "T1");
+                    _multiTunnelManager.SetDefaultRoutingAsync(target, SelectedDefaultTunnelId ?? "T1").FireAndForget();
                 }
             }
         }
@@ -173,7 +174,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                 !string.IsNullOrWhiteSpace(value) &&
                 Enum.TryParse(SelectedDefaultTargetType, out RuleTargetTypeIpcEntity target))
             {
-                _ = _multiTunnelManager.SetDefaultRoutingAsync(target, value);
+                _multiTunnelManager.SetDefaultRoutingAsync(target, value).FireAndForget();
             }
         }
     }
@@ -393,17 +394,17 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
 
     public void Receive(MultiTunnelPolicyChangedMessage message)
     {
-        ExecuteOnUIThread(RefreshState);
+        ExecuteOnUIThreadIfActive(RefreshState);
     }
 
     public void Receive(ServerListChangedMessage message)
     {
-        ExecuteOnUIThread(LoadCountries);
+        ExecuteOnUIThreadIfActive(LoadCountries);
     }
 
     public void Receive(ConnectionStatusChangedMessage message)
     {
-        ExecuteOnUIThread(RefreshState);
+        ExecuteOnUIThreadIfActive(RefreshState);
     }
 
     [RelayCommand]
@@ -453,20 +454,22 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     [RelayCommand]
     private async Task SaveQuickRuleAsync()
     {
-        string rawIpOrPort = QuickRuleIpOrPort.Trim();
-        string? ipCidr = null;
-        string? port = null;
-        if (!string.IsNullOrWhiteSpace(rawIpOrPort))
+        List<string> ipTokens = [];
+        List<string> portTokens = [];
+        foreach (string token in QuickRuleIpOrPort.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            if (rawIpOrPort.Contains('.') || rawIpOrPort.Contains(':') || rawIpOrPort.Contains('/'))
+            if (token.Contains('.') || token.Contains(':') || token.Contains('/'))
             {
-                ipCidr = rawIpOrPort;
+                ipTokens.Add(token);
             }
             else
             {
-                port = rawIpOrPort;
+                portTokens.Add(token);
             }
         }
+
+        string? ipCidr = ipTokens.Count > 0 ? string.Join(", ", ipTokens) : null;
+        string? port = portTokens.Count > 0 ? string.Join(", ", portTokens) : null;
 
         RuleTargetTypeIpcEntity target = Enum.TryParse(QuickRuleTargetType, out RuleTargetTypeIpcEntity parsedTarget)
             ? parsedTarget
@@ -709,9 +712,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         QuickRuleName = rule.Name;
         QuickRuleApp = rule.AppPattern ?? string.Empty;
         QuickRuleDomain = rule.DomainPattern ?? string.Empty;
-        QuickRuleIpOrPort = !string.IsNullOrWhiteSpace(rule.IpCidrPattern)
-            ? rule.IpCidrPattern
-            : (rule.PortPattern ?? string.Empty);
+        QuickRuleIpOrPort = string.Join(", ", new[] { rule.IpCidrPattern, rule.PortPattern }.Where(s => !string.IsNullOrWhiteSpace(s)));
         QuickRuleTargetType = rule.TargetType.ToString();
         QuickRuleTunnelId = string.IsNullOrWhiteSpace(rule.TargetTunnelId) ? "T1" : rule.TargetTunnelId;
         QuickRuleStatus = $"Editing '{rule.Name}' — click Save to apply.";

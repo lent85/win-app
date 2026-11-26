@@ -7,13 +7,6 @@
   "builtAtUtc": "2026-11-26T11:30:00Z",
   "entries": [
     {
-      "commit": "working",
-      "date": "2026-11-26",
-      "author": "Casper Ngo",
-      "subject": "fix(multi-tunnel): fix secondary tunnel on-link NextHop route, IPv6/QUIC WFP fallback, Opera Portable subfolder matching, and Kill-Switch offline badge",
-      "category": "fix"
-    },
-    {
       "commit": "a68b0ce",
       "date": "2026-11-26",
       "author": "Casper Ngo",

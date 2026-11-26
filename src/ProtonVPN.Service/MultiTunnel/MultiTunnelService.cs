@@ -53,6 +53,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private bool _isPrimaryVpnConnected;
     private VpnProtocol _lastProtocol = VpnProtocol.WireGuardUdp;
     private string? _lastAppliedFingerprint;
+    private string? _lastDomainRulesSignature;
     private CancellationTokenSource? _dnsResolveCts;
     private CancellationTokenSource? _appWatchCts;
 
@@ -112,6 +113,13 @@ public sealed class MultiTunnelService : IMultiTunnelService
                 rules,
                 MapTargetTypeFromIpc(policy.DefaultTargetType),
                 policy.DefaultTunnelId);
+
+            string domainRulesSignature = BuildDomainRulesSignature(rules);
+            if (!string.Equals(domainRulesSignature, _lastDomainRulesSignature, StringComparison.Ordinal))
+            {
+                _lastDomainRulesSignature = domainRulesSignature;
+                _orchestrator.DnsRoutingTable.Clear();
+            }
 
             IReadOnlyDictionary<string, TunnelSlotRuntimeState> currentSlots = _orchestrator.GetSlotStates();
             foreach (TunnelSlotStateIpcEntity slot in policy.TunnelSlots ?? [])
@@ -199,6 +207,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
             {
                 _logger.Info<SplitTunnelLog>("MultiTunnelService: Policy disabled; clearing MultiTunnel WFP filters.");
                 CancelBackgroundDnsResolution();
+                CancelAppProcessWatcher();
                 DisableWfpLocked();
                 return;
             }
@@ -586,17 +595,19 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
     private void CancelBackgroundDnsResolution()
     {
+        CancellationTokenSource? cts = _dnsResolveCts;
+        _dnsResolveCts = null;
+        if (cts is null)
+        {
+            return;
+        }
+
         try
         {
-            _dnsResolveCts?.Cancel();
-            _dnsResolveCts?.Dispose();
+            cts.Cancel();
         }
         catch
         {
-        }
-        finally
-        {
-            _dnsResolveCts = null;
         }
     }
 
@@ -614,6 +625,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
         if (domainRules.Count == 0)
         {
+            CancelBackgroundDnsResolution();
             return;
         }
 
@@ -626,7 +638,11 @@ public sealed class MultiTunnelService : IMultiTunnelService
         {
             try
             {
-                await ResolveDomainRulesAsync(domainRules, ct).ConfigureAwait(false);
+                while (!ct.IsCancellationRequested)
+                {
+                    await ResolveDomainRulesAsync(domainRules, ct).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(180), ct).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -634,6 +650,10 @@ public sealed class MultiTunnelService : IMultiTunnelService
             catch (Exception ex)
             {
                 _logger.Debug<SplitTunnelLog>($"MultiTunnelService: Background domain resolution error: {ex.Message}");
+            }
+            finally
+            {
+                cts.Dispose();
             }
         }, ct);
     }
@@ -720,7 +740,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
                 }
 
                 List<DnsResolvedRecord> records = addresses
-                    .Where(a => a.AddressFamily == AddressFamily.InterNetwork)
+                    .Where(a => a.AddressFamily == AddressFamily.InterNetwork ||
+                                (a.AddressFamily == AddressFamily.InterNetworkV6 && !IPAddress.IsLoopback(a) && !a.IsIPv6LinkLocal))
                     .Select(a => new DnsResolvedRecord(a, 300))
                     .ToList();
 
@@ -801,23 +822,44 @@ public sealed class MultiTunnelService : IMultiTunnelService
             {
                 _logger.Debug<SplitTunnelLog>($"MultiTunnelService: App process watcher error: {ex.Message}");
             }
+            finally
+            {
+                cts.Dispose();
+            }
         }, ct);
     }
 
     private void CancelAppProcessWatcher()
     {
+        CancellationTokenSource? cts = _appWatchCts;
+        _appWatchCts = null;
+        if (cts is null)
+        {
+            return;
+        }
+
         try
         {
-            _appWatchCts?.Cancel();
-            _appWatchCts?.Dispose();
+            cts.Cancel();
         }
         catch
         {
         }
-        finally
+    }
+
+    private static string BuildDomainRulesSignature(IEnumerable<SelectiveRoutingRule> rules)
+    {
+        StringBuilder sb = new();
+        foreach (SelectiveRoutingRule r in rules.Where(r => r.IsEnabled && r.HasDomainCondition).OrderBy(r => r.PriorityOrder))
         {
-            _appWatchCts = null;
+            sb.Append(r.Id).Append('#').Append(r.PriorityOrder).Append(':')
+              .Append(r.DomainPattern).Append('|')
+              .Append(r.TargetType).Append('|')
+              .Append(r.TargetTunnelId).Append('|')
+              .Append(r.FallbackBehavior).Append('|')
+              .Append(r.FallbackTunnelId).Append(';');
         }
+        return sb.ToString();
     }
 
     private static string ComputeResolvedAppsSignature(IEnumerable<SelectiveRoutingRule> appRules)

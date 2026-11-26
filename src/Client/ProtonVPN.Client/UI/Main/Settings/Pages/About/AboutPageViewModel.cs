@@ -29,6 +29,7 @@ using ProtonVPN.Client.Logic.Updates.Contracts;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
 using ProtonVPN.Client.UI.Settings.Pages.About.Models;
+using ProtonVPN.Common.Core.Extensions;
 using ProtonVPN.Common.Core.Helpers;
 using ProtonVPN.Update.Contracts;
 
@@ -56,19 +57,23 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
     private string _upstreamBaseSummary;
 
     [ObservableProperty]
-    private string _builtAtDisplay;
+    [NotifyPropertyChangedFor(nameof(HasBuiltAtDisplay))]
+    private string _builtAtDisplay = string.Empty;
 
     [ObservableProperty]
     private bool _hasServiceVersionMismatch;
 
     [ObservableProperty]
-    private string _serviceMismatchMessage;
+    private string _serviceMismatchMessage = string.Empty;
 
     [ObservableProperty]
     private bool _isCustomChangelogTabSelected = true;
 
     [ObservableProperty]
     private bool _isUpstreamChangelogTabSelected;
+
+    [ObservableProperty]
+    private string _customChangelogTabHeader = "Custom (Origin)";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsToShowErrorComponent))]
@@ -80,8 +85,6 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
     public bool IsToShowLoadingComponent => LatestAppUpdateStatus == AppUpdateStatus.Checking;
 
     public bool HasBuiltAtDisplay => !string.IsNullOrEmpty(BuiltAtDisplay);
-
-    public string CustomChangelogTabHeader { get; }
 
     public string UpstreamChangelogTabHeader =>
         Releases.Count > 0 ? $"Upstream (Proton · {Releases.Count})" : "Upstream (Proton)";
@@ -122,46 +125,68 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
         _releaseViewModelFactory = releaseViewModelFactory;
 
         ClientVersion = AssemblyVersion.Get();
+        CustomVersion = ClientVersion;
+        InstalledBuildSummary = $"v{ClientVersion}";
+        BuildBranchAndCommit = "origin/master";
+        UpstreamBaseSummary = $"Upstream base: {ClientVersion}";
+        LoadCustomBuildInfoAsync().FireAndForget();
+    }
 
-        InstalledBuildSnapshot snapshot = CustomBuildInfoLoader.Load(assembly: typeof(AboutPageViewModel).Assembly);
-        CustomVersion = snapshot.CustomFullVersion;
-        InstalledBuildSummary = !string.IsNullOrWhiteSpace(snapshot.InstalledServiceVersion) &&
-                                !string.Equals(snapshot.InstalledServiceVersion, snapshot.InstalledBuildVersion, StringComparison.OrdinalIgnoreCase)
-            ? $"v{snapshot.InstalledBuildVersion} (Service {snapshot.InstalledServiceVersion})"
-            : $"v{snapshot.InstalledBuildVersion}";
-        BuildBranchAndCommit = string.IsNullOrEmpty(snapshot.GitCommit)
-            ? $"origin/{snapshot.GitBranch}"
-            : $"origin/{snapshot.GitBranch}  •  commit {snapshot.GitCommit}";
-        string baseCommitText = string.IsNullOrEmpty(snapshot.UpstreamBaseCommit)
-            ? string.Empty
-            : $" ({snapshot.UpstreamBaseCommit})";
-        UpstreamBaseSummary = $"Upstream base: {snapshot.UpstreamBaseVersion}{baseCommitText}  •  {snapshot.CustomCommitCount} custom commit(s)";
-        BuiltAtDisplay = snapshot.BuiltAtUtc.HasValue
-            ? $"Built: {snapshot.BuiltAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}  •  {snapshot.InstallFolderName}"
-            : snapshot.InstallFolderName;
-        HasServiceVersionMismatch = snapshot.HasServiceVersionMismatch;
-        ServiceMismatchMessage = HasServiceVersionMismatch
-            ? $"Installed service ({snapshot.InstalledServiceVersion}) differs from running build ({snapshot.RunningBuildVersion}). Rebuild/reinstall to sync."
-            : string.Empty;
+    private async Task LoadCustomBuildInfoAsync()
+    {
+        try
+        {
+            InstalledBuildSnapshot snapshot = await Task.Run(() =>
+                CustomBuildInfoLoader.Load(assembly: typeof(AboutPageViewModel).Assembly));
 
-        CustomChangelogTabHeader = snapshot.CustomCommitCount > 0
-            ? $"Custom (Origin · {snapshot.CustomCommitCount})"
-            : "Custom (Origin)";
-
-        List<CustomReleaseGroup> grouped = CustomBuildInfoLoader.GroupEntriesByDate(snapshot.Entries)
-            .Select(g => new CustomReleaseGroup
-            {
-                DateLabel = g.DateLabel,
-                CommitCountLabel = g.Entries.Count == 1 ? "1 change" : $"{g.Entries.Count} changes",
-                Changes = g.Entries.Select(e => new CustomChangeItem
+            List<CustomReleaseGroup> grouped = CustomBuildInfoLoader.GroupEntriesByDate(snapshot.Entries)
+                .Select(g => new CustomReleaseGroup
                 {
-                    CommitShort = e.Commit,
-                    Category = e.Category,
-                    Subject = e.Subject,
-                }).ToList(),
-            })
-            .ToList();
-        CustomReleases.Reset(grouped);
+                    DateLabel = g.DateLabel,
+                    CommitCountLabel = g.Entries.Count == 1 ? "1 change" : $"{g.Entries.Count} changes",
+                    Changes = g.Entries.Select(e => new CustomChangeItem
+                    {
+                        CommitShort = e.Commit,
+                        Category = e.Category,
+                        Subject = e.Subject,
+                    }).ToList(),
+                })
+                .ToList();
+
+            ExecuteOnUIThread(() =>
+            {
+                CustomVersion = snapshot.CustomFullVersion;
+                InstalledBuildSummary = !string.IsNullOrWhiteSpace(snapshot.InstalledServiceVersion) &&
+                                        !string.Equals(snapshot.InstalledServiceVersion, snapshot.InstalledBuildVersion, StringComparison.OrdinalIgnoreCase)
+                    ? $"v{snapshot.InstalledBuildVersion} (Service {snapshot.InstalledServiceVersion})"
+                    : $"v{snapshot.InstalledBuildVersion}";
+                BuildBranchAndCommit = string.IsNullOrEmpty(snapshot.GitCommit)
+                    ? $"origin/{snapshot.GitBranch}"
+                    : $"origin/{snapshot.GitBranch}  •  commit {snapshot.GitCommit}";
+                string baseCommitText = string.IsNullOrEmpty(snapshot.UpstreamBaseCommit)
+                    ? string.Empty
+                    : $" ({snapshot.UpstreamBaseCommit})";
+                UpstreamBaseSummary = $"Upstream base: {snapshot.UpstreamBaseVersion}{baseCommitText}  •  {snapshot.CustomCommitCount} custom commit(s)";
+                BuiltAtDisplay = snapshot.BuiltAtUtc.HasValue
+                    ? $"Built: {snapshot.BuiltAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}  •  {snapshot.InstallFolderName}"
+                    : snapshot.InstallFolderName;
+                HasServiceVersionMismatch = snapshot.HasServiceVersionMismatch;
+                ServiceMismatchMessage = HasServiceVersionMismatch
+                    ? $"Installed service ({snapshot.InstalledServiceVersion}) differs from running build ({snapshot.RunningBuildVersion}). Rebuild/reinstall to sync."
+                    : string.Empty;
+
+                CustomChangelogTabHeader = snapshot.CustomCommitCount > 0
+                    ? $"Custom (Origin · {snapshot.CustomCommitCount})"
+                    : "Custom (Origin)";
+
+                CustomReleases.Reset(grouped);
+                OnPropertyChanged(nameof(HasCustomReleases));
+                OnPropertyChanged(nameof(HasNoCustomReleases));
+            });
+        }
+        catch
+        {
+        }
     }
 
     public void Receive(ClientUpdateStateChangedMessage message)

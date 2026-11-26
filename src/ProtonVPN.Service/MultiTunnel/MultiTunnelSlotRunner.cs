@@ -66,6 +66,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
     private readonly MultiTunnelOrchestrator _orchestrator;
     private readonly IPermittedRemoteAddress? _permittedRemoteAddress;
     private readonly ISystemNetworkInterfaces? _networkInterfaces;
+    private readonly ISecureConfigFileWriter? _secureConfigFileWriter;
 
     public MultiTunnelSlotRunner(
         ILogger logger,
@@ -77,7 +78,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         IIpv4GatewayResolver ipv4GatewayResolver,
         MultiTunnelOrchestrator orchestrator,
         IPermittedRemoteAddress? permittedRemoteAddress = null,
-        ISystemNetworkInterfaces? networkInterfaces = null)
+        ISystemNetworkInterfaces? networkInterfaces = null,
+        ISecureConfigFileWriter? secureConfigFileWriter = null)
     {
         _logger = logger;
         _staticConfig = staticConfig;
@@ -89,6 +91,22 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         _orchestrator = orchestrator;
         _permittedRemoteAddress = permittedRemoteAddress;
         _networkInterfaces = networkInterfaces;
+        _secureConfigFileWriter = secureConfigFileWriter;
+    }
+
+    public static bool IsValidSecondarySlotId(string? slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return false;
+        }
+
+        string trimmed = slotId.Trim().ToUpperInvariant();
+        return trimmed.Length == 2 &&
+               trimmed[0] == 'T' &&
+               int.TryParse(trimmed[1..], out int slotNum) &&
+               slotNum >= 2 &&
+               slotNum <= TunnelSlotAllocation.MaxTunnelSlots;
     }
 
     public async Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(
@@ -96,13 +114,23 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         CancellationToken cancellationToken)
     {
         string slotId = request.SlotId?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(slotId) || string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
         {
             return new MultiTunnelSlotConnectionResultIpcEntity
             {
                 Success = false,
                 SlotId = slotId,
                 ErrorMessage = "Primary slot T1 is managed by the main VPN connection.",
+            };
+        }
+
+        if (!IsValidSecondarySlotId(slotId))
+        {
+            return new MultiTunnelSlotConnectionResultIpcEntity
+            {
+                Success = false,
+                SlotId = slotId,
+                ErrorMessage = "Invalid secondary slot ID. Expected T2..T5.",
             };
         }
 
@@ -169,7 +197,14 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 .AppendLine("PersistentKeepalive = 25")
                 .ToString();
 
-            File.WriteAllText(configPath, configContent);
+            if (_secureConfigFileWriter is not null)
+            {
+                _secureConfigFileWriter.Write(configPath, configContent);
+            }
+            else
+            {
+                File.WriteAllText(configPath, configContent);
+            }
 
             bool shouldCreateRoute = _orchestrator.ActivateSlot(
                 slotId,
@@ -246,6 +281,35 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 clientIpv4,
                 cancellationToken).ConfigureAwait(false);
 
+            if (_networkInterfaces is not null && resolvedInterfaceIndex == 0)
+            {
+                await StopSlotServiceAsync(slotId).ConfigureAwait(false);
+                if (File.Exists(configPath))
+                {
+                    try
+                    {
+                        File.Delete(configPath);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                bool removedLast = _orchestrator.DeactivateSlot(slotId, out string failedIp);
+                if (removedLast && !string.IsNullOrWhiteSpace(failedIp))
+                {
+                    _routingTableHelper.DeleteRoute(failedIp, isIpv6: false);
+                    _permittedRemoteAddress?.Remove(failedIp);
+                }
+
+                return new MultiTunnelSlotConnectionResultIpcEntity
+                {
+                    Success = false,
+                    SlotId = slotId,
+                    ErrorMessage = $"Timed out waiting for WireGuard adapter ProtonVPN-{slotId}.",
+                };
+            }
+
             if (_orchestrator.GetSlotStates().TryGetValue(slotId, out TunnelSlotRuntimeState? liveSlot))
             {
                 liveSlot.InterfaceIndex = resolvedInterfaceIndex;
@@ -289,8 +353,12 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
 
     public async Task DisconnectSlotAsync(string slotId, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(slotId) || string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
+        if (!IsValidSecondarySlotId(slotId))
         {
+            if (!string.IsNullOrWhiteSpace(slotId) && !string.Equals(slotId.Trim(), "T1", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Warn<DisconnectLog>($"MultiTunnelSlotRunner: Ignoring invalid secondary slot ID '{slotId}'.");
+            }
             return;
         }
 

@@ -37,6 +37,7 @@ public class DetailsViewNavigator : ViewNavigatorBase, IDetailsViewNavigator,
 {
     private readonly IConnectionManager _connectionManager;
     private readonly IMultiTunnelManager _multiTunnelManager;
+    private bool? _lastHasActiveTunnel;
 
     public DetailsViewNavigator(
         ILogger logger,
@@ -62,8 +63,8 @@ public class DetailsViewNavigator : ViewNavigatorBase, IDetailsViewNavigator,
 
     public override Task<bool> NavigateToDefaultAsync()
     {
-        bool hasActiveTunnel = _connectionManager.IsConnected ||
-            (_multiTunnelManager.IsEnabled && _multiTunnelManager.ConnectedSlotCount > 0);
+        bool hasActiveTunnel = HasActiveTunnel();
+        _lastHasActiveTunnel = hasActiveTunnel;
 
         return hasActiveTunnel
             ? NavigateToConnectionDetailsViewAsync()
@@ -77,6 +78,18 @@ public class DetailsViewNavigator : ViewNavigatorBase, IDetailsViewNavigator,
 
     public void Receive(MultiTunnelPolicyChangedMessage message)
     {
+        bool hasActiveTunnel = HasActiveTunnel();
+        if (_lastHasActiveTunnel == hasActiveTunnel)
+        {
+            return;
+        }
+
         UIThreadDispatcher.TryEnqueue(NavigateToDefaultAsync);
+    }
+
+    private bool HasActiveTunnel()
+    {
+        return _connectionManager.IsConnected ||
+               (_multiTunnelManager.IsEnabled && _multiTunnelManager.ConnectedSlotCount > 0);
     }
 }

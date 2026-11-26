@@ -31,6 +31,7 @@ using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
 using ProtonVPN.Client.UI.Main.Home.Details.Connection;
 using ProtonVPN.Client.UI.Main.Settings.Bases;
+using ProtonVPN.Common.Core.Extensions;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
@@ -387,19 +388,19 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
 
     public void Receive(MultiTunnelPolicyChangedMessage message)
     {
-        ExecuteOnUIThread(RefreshState);
+        ExecuteOnUIThreadIfActive(RefreshState);
     }
 
     public void Receive(ServerListChangedMessage message)
     {
-        ExecuteOnUIThread(LoadCountries);
+        ExecuteOnUIThreadIfActive(LoadCountries);
     }
 
     partial void OnIsMultiTunnelEnabledChanged(bool value)
     {
         if (!_isRefreshing)
         {
-            _ = _multiTunnelManager.SetEnabledAsync(value);
+            _multiTunnelManager.SetEnabledAsync(value).FireAndForget();
         }
     }
 
@@ -408,7 +409,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         OnPropertyChanged(nameof(IsDefaultTargetTunnel));
         if (!_isRefreshing && !string.IsNullOrWhiteSpace(value) && Enum.TryParse(value, out RuleTargetTypeIpcEntity target))
         {
-            _ = _multiTunnelManager.SetDefaultRoutingAsync(target, SelectedDefaultTunnelId ?? "T1");
+            _multiTunnelManager.SetDefaultRoutingAsync(target, SelectedDefaultTunnelId ?? "T1").FireAndForget();
         }
     }
 
@@ -417,7 +418,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         if (!_isRefreshing && !string.IsNullOrWhiteSpace(value) &&
             Enum.TryParse(SelectedDefaultTargetType, out RuleTargetTypeIpcEntity target))
         {
-            _ = _multiTunnelManager.SetDefaultRoutingAsync(target, value);
+            _multiTunnelManager.SetDefaultRoutingAsync(target, value).FireAndForget();
         }
     }
 
@@ -887,11 +888,15 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
             ? parsedFb
             : TunnelFallbackBehaviorIpcEntity.KillSwitchBlock;
 
+        MultiTunnelRuleConfig? existingRule = EditingRuleId.HasValue
+            ? _multiTunnelManager.Rules.FirstOrDefault(r => r.Id == EditingRuleId.Value)
+            : null;
+
         MultiTunnelRuleConfig rule = new()
         {
             Id = EditingRuleId ?? Guid.NewGuid(),
             Name = name,
-            IsEnabled = true,
+            IsEnabled = existingRule?.IsEnabled ?? true,
             AppPattern = NullIfBlank(RuleAppPattern),
             DomainPattern = NullIfBlank(RuleDomainPattern),
             IpCidrPattern = NullIfBlank(RuleIpCidrPattern),
@@ -927,19 +932,20 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     }
 
     [RelayCommand]
-    public void ToggleAppPicker()
+    public async Task ToggleAppPickerAsync()
     {
         IsAppPickerOpen = !IsAppPickerOpen;
         if (IsAppPickerOpen)
         {
-            RefreshDiscoveredApps();
+            await RefreshDiscoveredAppsAsync();
         }
     }
 
     [RelayCommand]
-    public void RefreshDiscoveredApps()
+    public async Task RefreshDiscoveredAppsAsync()
     {
-        _allDiscoveredApps = WindowsAppDiscoveryHelper.DiscoverApps();
+        IReadOnlyList<DiscoveredAppItem> apps = await Task.Run(WindowsAppDiscoveryHelper.DiscoverApps);
+        _allDiscoveredApps = apps;
         RefreshFilteredDiscoveredApps();
     }
 

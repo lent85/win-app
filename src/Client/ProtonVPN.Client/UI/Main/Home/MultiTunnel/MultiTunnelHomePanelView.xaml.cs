@@ -44,11 +44,22 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
         ViewModel.Deactivate();
     }
 
-    private async void OnConnectSlotClick(object sender, RoutedEventArgs e)
+    private static async void RunSafeAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnConnectSlotClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string slotId })
         {
-            await ViewModel.ConnectSlotAsync(slotId);
+            RunSafeAsync(() => ViewModel.ConnectSlotAsync(slotId));
         }
     }
 
@@ -68,35 +79,36 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
         }
     }
 
-    private async void OnRemoveSlotClick(object sender, RoutedEventArgs e)
+    private void OnRemoveSlotClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string slotId })
         {
-            await ViewModel.RemoveSlotAsync(slotId);
+            RunSafeAsync(() => ViewModel.RemoveSlotAsync(slotId));
         }
     }
 
-    private async void OnRuleEnabledClick(object sender, RoutedEventArgs e)
+    private void OnRuleEnabledClick(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox { Tag: Guid ruleId } cb)
         {
-            await ViewModel.SetRuleEnabledAsync(ruleId, cb.IsChecked == true);
+            bool isEnabled = cb.IsChecked == true;
+            RunSafeAsync(() => ViewModel.SetRuleEnabledAsync(ruleId, isEnabled));
         }
     }
 
-    private async void OnMoveRuleUpClick(object sender, RoutedEventArgs e)
+    private void OnMoveRuleUpClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.MoveRuleUpAsync(ruleId);
+            RunSafeAsync(() => ViewModel.MoveRuleUpAsync(ruleId));
         }
     }
 
-    private async void OnMoveRuleDownClick(object sender, RoutedEventArgs e)
+    private void OnMoveRuleDownClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.MoveRuleDownAsync(ruleId);
+            RunSafeAsync(() => ViewModel.MoveRuleDownAsync(ruleId));
         }
     }
 
@@ -108,11 +120,11 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
         }
     }
 
-    private async void OnDeleteRuleClick(object sender, RoutedEventArgs e)
+    private void OnDeleteRuleClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: Guid ruleId })
         {
-            await ViewModel.DeleteRuleAsync(ruleId);
+            RunSafeAsync(() => ViewModel.DeleteRuleAsync(ruleId));
         }
     }
 }

@@ -144,6 +144,7 @@ public sealed class MultiTunnelRuleConfig
 public sealed class MultiTunnelPolicyConfig
 {
     public bool IsMultiTunnelEnabled { get; set; }
+    public bool HasInitializedDefaultRules { get; set; }
     public RuleTargetTypeIpcEntity DefaultTargetType { get; set; } = RuleTargetTypeIpcEntity.Direct;
     public string DefaultTunnelId { get; set; } = "T1";
     public List<MultiTunnelSlotConfig> Slots { get; set; } = [];

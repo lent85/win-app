@@ -67,6 +67,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
     private readonly FirewallIpFilter? _firewallIpFilter;
     private readonly object _syncLock = new();
     private readonly List<(FirewallSessionType SessionType, Guid FilterId)> _firewallBridgeFilters = [];
+    private readonly List<ProviderContext> _activeProviderContexts = [];
 
     private IpFilter? _ipFilter;
     private Sublayer? _sublayer;
@@ -112,11 +113,13 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     return;
                 }
 
+                bool transactionCommitted = false;
                 _ipFilter.Session.StartTransaction();
                 try
                 {
                     // Replace all filters atomically within a single WFP transaction to eliminate filter-gap leaks
                     _sublayer.DestroyAllFilters();
+                    DestroyActiveProviderContexts();
 
                     // 1. Create ProviderContext for Direct physical interface
                     ProviderContext directContextV4 = CreateRedirectContext("Direct-V4", physicalIpv4Address);
@@ -177,27 +180,19 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                         _connectCalloutV6);
 
                     _ipFilter.Session.CommitTransaction();
-
-                    // 6. Bridge secondary slot interfaces & Direct rules in ProtonVPN's main Firewall sublayer
-                    ApplyFirewallBridgeFilters(
-                        tunnelStates,
-                        priorityRules,
-                        resolvedDomainIpsByRule,
-                        defaultTargetType,
-                        includeIpv6);
-
-                    _logger.Info<SplitTunnelLog>(
-                        $"MultiTunnelWfpManager: Committed WFP policy ({appFilterGroupsCreated} app filter group(s), {_firewallBridgeFilters.Count} firewall bridge filter(s)).");
-                    return;
+                    transactionCommitted = true;
                 }
                 catch (Exception ex)
                 {
-                    try
+                    if (!transactionCommitted)
                     {
-                        _ipFilter.Session.AbortTransaction();
-                    }
-                    catch
-                    {
+                        try
+                        {
+                            _ipFilter.Session.AbortTransaction();
+                        }
+                        catch
+                        {
+                        }
                     }
 
                     RemoveSession();
@@ -206,7 +201,27 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                         _logger.Error<SplitTunnelLog>("MultiTunnelWfpManager: Failed to commit WFP policy transaction.", ex);
                         throw;
                     }
+                    continue;
                 }
+
+                // 6. Bridge secondary slot interfaces & Direct rules in ProtonVPN's main Firewall sublayer
+                try
+                {
+                    ApplyFirewallBridgeFilters(
+                        tunnelStates,
+                        priorityRules,
+                        resolvedDomainIpsByRule,
+                        defaultTargetType,
+                        includeIpv6);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn<SplitTunnelLog>($"MultiTunnelWfpManager: Failed to update firewall bridge filters: {ex.Message}");
+                }
+
+                _logger.Info<SplitTunnelLog>(
+                    $"MultiTunnelWfpManager: Committed WFP policy (bridge filter(s): {_firewallBridgeFilters.Count}).");
+                return;
             }
         }
     }
@@ -275,8 +290,17 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 
         DisplayData display = new($"ProtonVPN Rule #{rule.PriorityOrder}: {rule.Name}", "Priority Selective Routing Filter");
 
-        // A. App-based rules
-        if (rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition)
+        bool hasCompoundAppCondition = rule.HasAppCondition &&
+            (rule.HasDomainCondition || rule.HasIpCondition || rule.HasPortCondition || rule.Protocol != RuleProtocol.Any);
+        if (hasCompoundAppCondition)
+        {
+            _logger.Warn<SplitTunnelLog>(
+                $"MultiTunnelWfpManager: Rule #{rule.PriorityOrder} '{rule.Name}' combines App with Domain/IP/Port/Protocol, which cannot be combined in native WFP; skipping broadened filter to prevent traffic leaks.");
+            return appFilterGroupsCreated;
+        }
+
+        // A. App-only rules
+        if (rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any)
         {
             foreach (string rawAppPath in SplitEntries(rule.AppPattern!))
             {
@@ -323,18 +347,19 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
             }
         }
 
-        // B. Domain-resolved IP rules (installed dynamically by MultiTunnelDnsProxy with rule's priority weight)
-        if (rule.HasDomainCondition && resolvedDomainIpsByRule.TryGetValue(rule.Id, out IReadOnlyList<IPAddress>? domainIps))
+        // B. Domain-resolved IP rules (installed dynamically by MultiTunnelService with rule's priority weight)
+        if (rule.HasDomainCondition && !rule.HasAppCondition && !rule.HasIpCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any &&
+            resolvedDomainIpsByRule.TryGetValue(rule.Id, out IReadOnlyList<IPAddress>? domainIps))
         {
             foreach (IPAddress ip in domainIps)
             {
-                if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
                 {
                     if (shouldBlock)
                     {
                         SafeRunWfpFilter(
                             () => _sublayer.CreateRemoteIPv4Filter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, ip.ToString()),
-                            $"Rule #{rule.PriorityOrder} DomainBlock '{ip}'");
+                            $"Rule #{rule.PriorityOrder} DomainBlockV4 '{ip}'");
                     }
                     else if (targetCtxV4 is not null)
                     {
@@ -342,14 +367,38 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                         {
                             _sublayer.CreateRemoteIPv4CalloutFilter(display, Layer.AppConnectRedirectV4, weight, connectCalloutV4, targetCtxV4, ip.ToString());
                             _sublayer.CreateRemoteIPv4Filter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, ip.ToString());
-                        }, $"Rule #{rule.PriorityOrder} DomainRedirect '{ip}'");
+                        }, $"Rule #{rule.PriorityOrder} DomainRedirectV4 '{ip}'");
+                    }
+                }
+                else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    NetworkAddress netAddrV6 = NetworkAddress.FromIpv6(ip.ToString(), 128);
+                    if (shouldBlock)
+                    {
+                        SafeRunWfpFilter(
+                            () => _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, netAddrV6),
+                            $"Rule #{rule.PriorityOrder} DomainBlockV6 '{ip}'");
+                    }
+                    else if (targetCtxV6 is not null && connectCalloutV6 is not null)
+                    {
+                        SafeRunWfpFilter(() =>
+                        {
+                            _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, netAddrV6);
+                            _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, netAddrV6);
+                        }, $"Rule #{rule.PriorityOrder} DomainRedirectV6 '{ip}'");
+                    }
+                    else if (rule.TargetType == RuleTargetType.Tunnel)
+                    {
+                        SafeRunWfpFilter(
+                            () => _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, netAddrV6),
+                            $"Rule #{rule.PriorityOrder} DomainLeakBlockV6 '{ip}'");
                     }
                 }
             }
         }
 
         // C. Explicit IP / CIDR rules
-        if (rule.HasIpCondition)
+        if (rule.HasIpCondition && !rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any)
         {
             foreach (string rawCidr in SplitEntries(rule.IpCidrPattern!))
             {
@@ -374,13 +423,23 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                         _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV4, weight, netAddr);
                     }, $"Rule #{rule.PriorityOrder} CidrRedirectV4 '{rawCidr}'");
                 }
-                else if (netAddr.IsIpv6 && targetCtxV6 is not null && connectCalloutV6 is not null)
+                else if (netAddr.IsIpv6)
                 {
-                    SafeRunWfpFilter(() =>
+                    if (targetCtxV6 is not null && connectCalloutV6 is not null)
                     {
-                        _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, netAddr);
-                        _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, netAddr);
-                    }, $"Rule #{rule.PriorityOrder} CidrRedirectV6 '{rawCidr}'");
+                        SafeRunWfpFilter(() =>
+                        {
+                            _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, netAddr);
+                            _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, netAddr);
+                        }, $"Rule #{rule.PriorityOrder} CidrRedirectV6 '{rawCidr}'");
+                    }
+                    else if (rule.TargetType == RuleTargetType.Tunnel)
+                    {
+                        SafeRunWfpFilter(() =>
+                        {
+                            _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, netAddr);
+                        }, $"Rule #{rule.PriorityOrder} CidrLeakBlockV6 '{rawCidr}'");
+                    }
                 }
             }
         }
@@ -389,23 +448,30 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
         if (rule.HasPortCondition && !string.IsNullOrWhiteSpace(rule.PortPattern) &&
             !rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition)
         {
-            Action portAction = shouldBlock ? Action.HardBlock : Action.HardPermit;
-            foreach (uint port in ExpandPortsBounded(rule.PortPattern, maxPorts: 64))
+            if (!shouldBlock)
             {
-                SafeRunWfpFilter(() =>
+                _logger.Warn<SplitTunnelLog>(
+                    $"MultiTunnelWfpManager: Rule #{rule.PriorityOrder} '{rule.Name}' is a standalone Port/Protocol redirect rule, which cannot attach a WFP redirect callout; skipping non-block port filter.");
+            }
+            else
+            {
+                foreach (uint port in ExpandPortsBounded(rule.PortPattern, maxPorts: 64))
                 {
-                    if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Tcp)
+                    SafeRunWfpFilter(() =>
                     {
-                        _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
-                        _sublayer.CreateRemoteTcpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
-                    }
+                        if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Tcp)
+                        {
+                            _sublayer.CreateRemoteTcpPortFilter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, port);
+                            _sublayer.CreateRemoteTcpPortFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, port);
+                        }
 
-                    if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Udp)
-                    {
-                        _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV4, weight, port);
-                        _sublayer.CreateRemoteUdpPortFilter(display, portAction, Layer.AppAuthConnectV6, weight, port);
-                    }
-                }, $"Rule #{rule.PriorityOrder} Port {port}/{rule.Protocol}");
+                        if (rule.Protocol is RuleProtocol.Any or RuleProtocol.Udp)
+                        {
+                            _sublayer.CreateRemoteUdpPortFilter(display, Action.HardBlock, Layer.AppAuthConnectV4, weight, port);
+                            _sublayer.CreateRemoteUdpPortFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, port);
+                        }
+                    }, $"Rule #{rule.PriorityOrder} PortBlock {port}/{rule.Protocol}");
+                }
             }
         }
 
@@ -464,13 +530,37 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 
     private ProviderContext CreateRedirectContext(string label, IPAddress bindAddress)
     {
-        return _ipFilter!.CreateProviderContext(
+        ProviderContext ctx = _ipFilter!.CreateProviderContext(
             new DisplayData
             {
                 Name = $"ProtonVPN MultiTunnel Redirect Context ({label})",
                 Description = $"Redirects matching flows to local source address {bindAddress}",
             },
             new ConnectRedirectData(bindAddress));
+        _activeProviderContexts.Add(ctx);
+        return ctx;
+    }
+
+    private void DestroyActiveProviderContexts()
+    {
+        if (_ipFilter is null || _activeProviderContexts.Count == 0)
+        {
+            _activeProviderContexts.Clear();
+            return;
+        }
+
+        foreach (ProviderContext ctx in _activeProviderContexts)
+        {
+            try
+            {
+                _ipFilter.DestroyProviderContext(ctx);
+            }
+            catch
+            {
+            }
+        }
+
+        _activeProviderContexts.Clear();
     }
 
     private void EnsureSession(bool includeIpv6)
@@ -671,7 +761,9 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
         RuleTargetType defaultTargetType,
         bool includeIpv6)
     {
-        ClearFirewallBridgeFilters();
+        List<(FirewallSessionType SessionType, Guid FilterId)> previousFilters = [.. _firewallBridgeFilters];
+        _firewallBridgeFilters.Clear();
+
         if (_firewallIpFilter is null)
         {
             return;
@@ -696,6 +788,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 
         if (targetSublayers.Count == 0)
         {
+            DestroyFirewallBridgeFilters(previousFilters);
             return;
         }
 
@@ -724,8 +817,14 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     continue;
                 }
 
+                if (rule.HasAppCondition &&
+                    (rule.HasDomainCondition || rule.HasIpCondition || rule.HasPortCondition || rule.Protocol != RuleProtocol.Any))
+                {
+                    continue;
+                }
+
                 DisplayData directRuleDisplay = new($"ProtonVPN MultiTunnel Direct Permit #{rule.PriorityOrder}", rule.Name);
-                if (rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition)
+                if (rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasIpCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any)
                 {
                     foreach (string rawApp in SplitEntries(rule.AppPattern!))
                     {
@@ -740,7 +839,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     }
                 }
 
-                if (rule.HasIpCondition)
+                if (rule.HasIpCondition && !rule.HasAppCondition && !rule.HasDomainCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any)
                 {
                     foreach (string rawCidr in SplitEntries(rule.IpCidrPattern!))
                     {
@@ -752,11 +851,20 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     }
                 }
 
-                if (rule.HasDomainCondition && resolvedDomainIpsByRule.TryGetValue(rule.Id, out IReadOnlyList<IPAddress>? ips))
+                if (rule.HasDomainCondition && !rule.HasAppCondition && !rule.HasIpCondition && !rule.HasPortCondition && rule.Protocol == RuleProtocol.Any &&
+                    resolvedDomainIpsByRule.TryGetValue(rule.Id, out IReadOnlyList<IPAddress>? ips))
                 {
-                    foreach (IPAddress ip in ips.Where(i => i.AddressFamily == AddressFamily.InterNetwork))
+                    foreach (IPAddress ip in ips)
                     {
-                        SafeAddBridgeFilter(sessionType, () => fwSublayer.CreateRemoteIPv4Filter(directRuleDisplay, Action.HardPermit, Layer.AppAuthConnectV4, FirewallBridgePermitWeight, ip.ToString(), persistent: false));
+                        if (ip.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            SafeAddBridgeFilter(sessionType, () => fwSublayer.CreateRemoteIPv4Filter(directRuleDisplay, Action.HardPermit, Layer.AppAuthConnectV4, FirewallBridgePermitWeight, ip.ToString(), persistent: false));
+                        }
+                        else if (includeIpv6 && ip.AddressFamily == AddressFamily.InterNetworkV6)
+                        {
+                            NetworkAddress netAddrV6 = NetworkAddress.FromIpv6(ip.ToString(), 128);
+                            SafeAddBridgeFilter(sessionType, () => fwSublayer.CreateRemoteNetworkIPFilter(directRuleDisplay, Action.HardPermit, Layer.AppAuthConnectV6, FirewallBridgePermitWeight, netAddrV6, persistent: false));
+                        }
                     }
                 }
             }
@@ -765,8 +873,14 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
             {
                 DisplayData defaultDirectDisplay = new("ProtonVPN MultiTunnel Default Direct Permit", "Allows unmatched traffic to go Direct past base kill-switch block");
                 SafeAddBridgeFilter(sessionType, () => fwSublayer.CreateLayerFilter(defaultDirectDisplay, Action.SoftPermit, Layer.AppAuthConnectV4, FirewallDefaultDirectWeight, persistent: false));
+                if (includeIpv6)
+                {
+                    SafeAddBridgeFilter(sessionType, () => fwSublayer.CreateLayerFilter(defaultDirectDisplay, Action.SoftPermit, Layer.AppAuthConnectV6, FirewallDefaultDirectWeight, persistent: false));
+                }
             }
         }
+
+        DestroyFirewallBridgeFilters(previousFilters);
     }
 
     private void SafeAddBridgeFilter(FirewallSessionType sessionType, Func<Guid> createFilter)
@@ -787,13 +901,24 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 
     private void ClearFirewallBridgeFilters()
     {
-        if (_firewallIpFilter is null || _firewallBridgeFilters.Count == 0)
+        if (_firewallBridgeFilters.Count == 0)
         {
-            _firewallBridgeFilters.Clear();
             return;
         }
 
-        foreach ((FirewallSessionType sessionType, Guid filterId) in _firewallBridgeFilters)
+        List<(FirewallSessionType SessionType, Guid FilterId)> toDestroy = [.. _firewallBridgeFilters];
+        _firewallBridgeFilters.Clear();
+        DestroyFirewallBridgeFilters(toDestroy);
+    }
+
+    private void DestroyFirewallBridgeFilters(IEnumerable<(FirewallSessionType SessionType, Guid FilterId)> filters)
+    {
+        if (_firewallIpFilter is null)
+        {
+            return;
+        }
+
+        foreach ((FirewallSessionType sessionType, Guid filterId) in filters)
         {
             try
             {
@@ -803,8 +928,6 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
             {
             }
         }
-
-        _firewallBridgeFilters.Clear();
     }
 
     public static IReadOnlyList<string> ResolveAppExecutablePaths(
@@ -1212,6 +1335,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
         }
         finally
         {
+            _activeProviderContexts.Clear();
             _ipFilter = null;
             _sublayer = null;
             _connectCalloutV4 = null;

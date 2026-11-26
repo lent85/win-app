@@ -63,7 +63,9 @@ try {
         }
     }
     $RemoteRaw = (& git -C $RepoRoot remote get-url origin 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $RemoteRaw) { $OriginRemoteUrl = $RemoteRaw.Trim() }
+    if ($LASTEXITCODE -eq 0 -and $RemoteRaw) {
+        $OriginRemoteUrl = ($RemoteRaw.Trim() -replace '^(https?://)[^/@]+@', '$1')
+    }
 } catch {
     $BuildNumber = [int](Get-Date).ToUniversalTime().ToString("yyMMddHH")
 }
@@ -121,7 +123,13 @@ try {
         } else {
             Write-Warning "DEPENDENCY_CACHE_URL is not set; checking local Proton VPN installation for prebuilt C++/Rust binaries."
             $InstalledDir = Get-ChildItem "C:\Program Files\Proton\VPN" -Directory -Filter "v*" -ErrorAction SilentlyContinue |
-                Sort-Object Name -Descending |
+                ForEach-Object {
+                    $parsedVer = $null
+                    if ([version]::TryParse($_.Name.Substring(1), [ref]$parsedVer)) {
+                        [pscustomobject]@{ Version = $parsedVer; FullName = $_.FullName }
+                    }
+                } |
+                Sort-Object Version -Descending |
                 Select-Object -First 1 -ExpandProperty FullName
             if ($InstalledDir) {
                 Write-Host "==> Staging prebuilt C++/Rust binaries from $InstalledDir..."
@@ -168,7 +176,7 @@ try {
     }
 
     # Collect custom origin commits since upstream base and write BUILD_INFO.json, CUSTOM_CHANGELOG.json, VERSION.txt
-    $CustomEntries = [System.Collections.Generic.List[hashtable]]::new()
+    $CustomEntries = [System.Collections.Generic.List[object]]::new()
     try {
         $LogArgs = if ($UpstreamBaseCommit) {
             @("-C", $RepoRoot, "log", "$UpstreamBaseCommit..HEAD", "--max-count=100", "--format=%h%x1f%ad%x1f%an%x1f%s", "--date=short")
@@ -197,6 +205,7 @@ try {
             }
         }
     } catch {
+        Write-Warning "Failed to collect custom git changelog: $($_.Exception.Message)"
     }
 
     $BuildInfoObj = [ordered]@{
@@ -238,6 +247,7 @@ try {
     # 3. Run unit tests
     if (-not $SkipTests) {
         $TestProjects = @(
+            "src\Common\ProtonVPN.Common.Core.Tests\ProtonVPN.Common.Core.Tests.csproj",
             "src\Tests\ProtonVPN.Service.Tests\ProtonVPN.Service.Tests.csproj",
             "src\Client\Logic\Auth\ProtonVPN.Client.Logic.Auth.Tests\ProtonVPN.Client.Logic.Auth.Tests.csproj",
             "src\Client\Logic\Connection\ProtonVPN.Client.Logic.Connection.Tests\ProtonVPN.Client.Logic.Connection.Tests.csproj"
