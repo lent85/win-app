@@ -158,13 +158,20 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
                 if (slot.Status == VpnStatusIpcEntity.Connected)
                 {
+                    IPAddress? parsedIpv6 = !string.IsNullOrWhiteSpace(slot.ClientIpv6Address) &&
+                                            IPAddress.TryParse(slot.ClientIpv6Address, out IPAddress? v6) &&
+                                            v6.AddressFamily == AddressFamily.InterNetworkV6
+                        ? v6
+                        : null;
+
                     _orchestrator.ActivateSlot(
                         normalizedId,
                         slot.ServerCountryCode ?? string.Empty,
                         slot.ServerName ?? string.Empty,
                         slot.EntryIp ?? string.Empty,
                         slot.ExitIp ?? string.Empty,
-                        interfaceIndex: 0);
+                        interfaceIndex: 0,
+                        clientIpv6: parsedIpv6);
 
                     if (IPAddress.TryParse(slot.ClientIpv4Address, out IPAddress? parsedClientIp))
                     {
@@ -225,18 +232,26 @@ public sealed class MultiTunnelService : IMultiTunnelService
             string remoteIp = state.RemoteIp ?? meta?.EntryIp ?? string.Empty;
             string exitIp = meta?.ExitIp ?? remoteIp;
 
+            IPAddress? localIp = !string.IsNullOrWhiteSpace(state.LocalIp) &&
+                                 IPAddress.TryParse(state.LocalIp, out IPAddress? parsedLocalIp)
+                ? parsedLocalIp
+                : null;
+            IPAddress? t1DefaultIp = _orchestrator.GetSlotStates().TryGetValue("T1", out TunnelSlotRuntimeState? existingT1)
+                ? existingT1.ClientIpv4
+                : null;
+            IPAddress? liveIpv6 = ResolveLiveInterfaceIpv6(localIp ?? t1DefaultIp);
+
             _orchestrator.ActivateSlot(
                 "T1",
                 countryCode,
                 serverName,
                 remoteIp,
                 exitIp,
-                interfaceIndex: 0);
+                interfaceIndex: 0,
+                clientIpv6: liveIpv6);
 
             IReadOnlyDictionary<string, TunnelSlotRuntimeState> slots = _orchestrator.GetSlotStates();
-            if (slots.TryGetValue("T1", out TunnelSlotRuntimeState? t1Slot) &&
-                !string.IsNullOrWhiteSpace(state.LocalIp) &&
-                IPAddress.TryParse(state.LocalIp, out IPAddress? localIp))
+            if (slots.TryGetValue("T1", out TunnelSlotRuntimeState? t1Slot) && localIp is not null)
             {
                 t1Slot.ClientIpv4 = localIp;
             }
@@ -512,6 +527,55 @@ public sealed class MultiTunnelService : IMultiTunnelService
             _lastAppliedFingerprint = null;
             _logger.Error<SplitTunnelLog>("MultiTunnelService: Failed to apply Multi-Tunnel WFP policy.", ex);
         }
+    }
+
+    private IPAddress? ResolveLiveInterfaceIpv6(IPAddress? localIpv4)
+    {
+        if (localIpv4 is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            INetworkInterface[]? interfaces = _networkInterfaces.GetInterfaces();
+            if (interfaces is null)
+            {
+                return null;
+            }
+
+            foreach (INetworkInterface iface in interfaces)
+            {
+                List<NetworkAddress> addresses = iface.GetUnicastAddresses();
+                if (!addresses.Any(a => !a.IsIpV6 && a.Ip.Equals(localIpv4)))
+                {
+                    continue;
+                }
+
+                IPAddress? preferred = iface.GetPreferredIpv6UnicastAddress();
+                if (preferred is not null &&
+                    preferred.AddressFamily == AddressFamily.InterNetworkV6 &&
+                    !IPAddress.IsLoopback(preferred) &&
+                    !preferred.IsIPv6LinkLocal)
+                {
+                    return preferred;
+                }
+
+                NetworkAddress fallbackV6 = addresses.FirstOrDefault(a =>
+                    a.IsIpV6 &&
+                    !IPAddress.IsLoopback(a.Ip) &&
+                    !a.Ip.IsIPv6LinkLocal);
+
+                return fallbackV6.Ip is not null && fallbackV6.Ip.AddressFamily == AddressFamily.InterNetworkV6
+                    ? fallbackV6.Ip
+                    : null;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 
     private void DisableWfpLocked()
@@ -791,6 +855,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
         {
             sb.Append(s.SlotId).Append(':')
               .Append(s.ClientIpv4).Append(':')
+              .Append(s.ClientIpv6?.ToString() ?? "").Append(':')
               .Append(s.EntryIp).Append(':')
               .Append(s.InterfaceIndex).Append(';');
         }

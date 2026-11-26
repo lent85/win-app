@@ -310,6 +310,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                             {
                                 _sublayer.CreateAppCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
                                 _sublayer.CreateAppCalloutFilter(display, Layer.BindRedirectV6, weight, bindCalloutV6, targetCtxV6, appPath, isDnsPortExcluded: false);
+                                _sublayer.CreateAppFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, appPath, isDnsPortExcluded: false);
                             }
                             else
                             {
@@ -655,6 +656,10 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     _sublayer.CreateRemoteNetworkCalloutFilter(display, Layer.AppConnectRedirectV6, weight, connectCalloutV6, targetCtxV6, allIpv6);
                     _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardPermit, Layer.AppAuthConnectV6, weight, allIpv6);
                 }
+                else if (defaultTargetType == RuleTargetType.Tunnel)
+                {
+                    _sublayer.CreateRemoteNetworkIPFilter(display, Action.HardBlock, Layer.AppAuthConnectV6, weight, allIpv6);
+                }
             }, $"DefaultPolicy {defaultTargetType}");
         }
     }
@@ -814,7 +819,33 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
 
         if (Path.IsPathRooted(trimmed))
         {
-            return File.Exists(trimmed) ? [trimmed] : [];
+            if (!File.Exists(trimmed))
+            {
+                return [];
+            }
+
+            HashSet<string> rootedMatches = new(StringComparer.OrdinalIgnoreCase) { trimmed };
+            try
+            {
+                string? dir = Path.GetDirectoryName(trimmed);
+                string fileName = Path.GetFileName(trimmed);
+                if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(fileName) && Directory.Exists(dir))
+                {
+                    foreach (string subDir in Directory.EnumerateDirectories(dir))
+                    {
+                        string candidate = Path.Combine(subDir, fileName);
+                        if (File.Exists(candidate))
+                        {
+                            rootedMatches.Add(candidate);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return rootedMatches.ToList();
         }
 
         HashSet<string> resolved = new(StringComparer.OrdinalIgnoreCase);

@@ -177,7 +177,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 endpoint.Name,
                 endpoint.Ip,
                 endpoint.Ip,
-                interfaceIndex: 0);
+                interfaceIndex: 0,
+                clientIpv6: null);
 
             if (_orchestrator.GetSlotStates().TryGetValue(slotId, out TunnelSlotRuntimeState? runtimeSlot))
             {
@@ -189,6 +190,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 {
                     runtimeSlot.ServerGatewayIpv4 = parsedGateway;
                 }
+                runtimeSlot.ClientIpv6 = null;
             }
 
             _permittedRemoteAddress?.Add([endpoint.Ip], FilterAction.HardPermit);
@@ -534,17 +536,24 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
             return;
         }
 
+        // WireGuardNT is an L3 point-to-point TUN adapter; routes must use 0.0.0.0 (on-link) NextHop,
+        // NOT null (which RoutingTableHelper maps to loopback) and NOT clientIp.
+        NetworkAddress onLinkGateway = new(IPAddress.Any);
+
         // Remove any competing low-metric routes scoped specifically to this slot adapter
-        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
-        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitLow, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
-        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitHigh, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+        foreach (NetworkAddress gw in new[] { onLinkGateway, clientNet })
+        {
+            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = gw, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitLow, Gateway = gw, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitHigh, Gateway = gw, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+        }
 
         uint highMetric = 32000u + (uint)Math.Max(0, slotIndex);
 
         _routingTableHelper.CreateRoute(new RouteConfiguration
         {
             Destination = defaultIpv4,
-            Gateway = clientNet,
+            Gateway = onLinkGateway,
             InterfaceIndex = interfaceIndex,
             Metric = highMetric,
             IsIpv6 = false,
@@ -553,7 +562,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         _routingTableHelper.CreateRoute(new RouteConfiguration
         {
             Destination = gatewayHost,
-            Gateway = clientNet,
+            Gateway = onLinkGateway,
             InterfaceIndex = interfaceIndex,
             Metric = highMetric,
             IsIpv6 = false,
@@ -570,10 +579,15 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
             return;
         }
 
+        NetworkAddress onLinkGateway = new(IPAddress.Any);
+
         try
         {
-            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
-            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = gatewayHost, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+            foreach (NetworkAddress gw in new[] { onLinkGateway, clientNet })
+            {
+                _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = gw, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+                _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = gatewayHost, Gateway = gw, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+            }
         }
         catch (Exception ex)
         {

@@ -43,7 +43,7 @@ public sealed class MultiTunnelOrchestrator
                 IsConnected = false,
                 ClientIpv4 = alloc.ClientIpv4,
                 ServerGatewayIpv4 = alloc.ServerGatewayIpv4,
-                ClientIpv6 = alloc.ClientIpv6,
+                ClientIpv6 = null,
             };
         }
     }
@@ -75,7 +75,8 @@ public sealed class MultiTunnelOrchestrator
         string entryIp,
         string exitIp,
         uint interfaceIndex,
-        IReadOnlySet<byte>? reservedLanSecondOctets = null)
+        IReadOnlySet<byte>? reservedLanSecondOctets = null,
+        IPAddress? clientIpv6 = null)
     {
         lock (_lock)
         {
@@ -95,7 +96,7 @@ public sealed class MultiTunnelOrchestrator
             TunnelSlotAllocation alloc = TunnelSlotAllocation.ForSlot(slot.SlotIndex, reservedLanSecondOctets);
             slot.ClientIpv4 = alloc.ClientIpv4;
             slot.ServerGatewayIpv4 = alloc.ServerGatewayIpv4;
-            slot.ClientIpv6 = alloc.ClientIpv6;
+            slot.ClientIpv6 = clientIpv6;
             slot.CountryCode = countryCode;
             slot.ServerName = serverName;
             slot.EntryIp = entryIp;
@@ -125,6 +126,7 @@ public sealed class MultiTunnelOrchestrator
             releasedEntryIp = slot.EntryIp;
             slot.IsConnected = false;
             slot.InterfaceIndex = 0;
+            slot.ClientIpv6 = null;
 
             return ReleaseEndpointRouteInternal(normalizedId, releasedEntryIp);
         }

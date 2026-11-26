@@ -391,10 +391,19 @@ public class MultiTunnelServiceTests
 
             result.Success.Should().BeTrue();
             _orchestrator.GetSlotStates()["T2"].InterfaceIndex.Should().Be(99u);
+            _orchestrator.GetSlotStates()["T2"].ClientIpv6.Should().BeNull();
             routingHelper.Received().CreateRoute(Arg.Is<RouteConfiguration>(r =>
-                r.InterfaceIndex == 99u && r.Metric == 32001u && r.Destination.Ip.Equals(IPAddress.Any)));
+                r.InterfaceIndex == 99u &&
+                r.Metric == 32001u &&
+                r.Gateway.HasValue &&
+                r.Gateway.Value.Ip.Equals(IPAddress.Any) &&
+                r.Destination.Ip.Equals(IPAddress.Any)));
             routingHelper.Received().CreateRoute(Arg.Is<RouteConfiguration>(r =>
-                r.InterfaceIndex == 99u && r.Metric == 32001u && r.Destination.Ip.Equals(IPAddress.Parse("10.3.0.1"))));
+                r.InterfaceIndex == 99u &&
+                r.Metric == 32001u &&
+                r.Gateway.HasValue &&
+                r.Gateway.Value.Ip.Equals(IPAddress.Any) &&
+                r.Destination.Ip.Equals(IPAddress.Parse("10.3.0.1"))));
 
             string writtenConf = File.ReadAllText(Path.Combine(tempDir, "ProtonVPN-T2.conf"));
             writtenConf.Should().Contain("Table = off");
@@ -403,7 +412,10 @@ public class MultiTunnelServiceTests
             await runner.DisconnectSlotAsync("T2", CancellationToken.None);
 
             routingHelper.Received().DeleteRoute(Arg.Is<RouteConfiguration>(r =>
-                r.InterfaceIndex == 99u && r.Destination.Ip.Equals(IPAddress.Any)));
+                r.InterfaceIndex == 99u &&
+                r.Gateway.HasValue &&
+                r.Gateway.Value.Ip.Equals(IPAddress.Any) &&
+                r.Destination.Ip.Equals(IPAddress.Any)));
             routingHelper.Received().DeleteRoute("185.159.158.10", false);
         }
         finally
@@ -446,6 +458,55 @@ public class MultiTunnelServiceTests
         finally
         {
             try { Directory.Delete(tempUserRoot, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public void OnVpnConnected_LeavesClientIpv6NullWhenPrimaryAdapterHasNoIpv6()
+    {
+        INetworkInterface t1Nic = Substitute.For<INetworkInterface>();
+        t1Nic.Name.Returns("ProtonVPN");
+        t1Nic.Index.Returns(31u);
+        t1Nic.GetUnicastAddresses().Returns([new NetworkAddress(IPAddress.Parse("10.2.0.2"))]);
+        t1Nic.GetPreferredIpv6UnicastAddress().Returns((IPAddress)null);
+        _networkInterfaces.GetInterfaces().Returns([t1Nic]);
+
+        MultiTunnelService service = CreateService();
+        service.ApplyPolicy(new MultiTunnelPolicyIpcEntity { IsMultiTunnelEnabled = true });
+
+        service.OnVpnConnected(new VpnState(
+            VpnStatus.Connected,
+            VpnError.None,
+            localIp: "10.2.0.2",
+            remoteIp: "185.159.1.10",
+            endpointPort: 51820,
+            vpnProtocol: VpnProtocol.WireGuardUdp));
+
+        _orchestrator.GetSlotStates()["T1"].ClientIpv6.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MultiTunnelWfpManager_ResolveAppExecutablePaths_IncludesVersionedSubfolderForRootedPath()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"pvpn-opera-portable-{Guid.NewGuid():N}");
+        string rootOperaExe = Path.Combine(tempRoot, "opera.exe");
+        string verDir = Path.Combine(tempRoot, "132.0.5905.37");
+        string verOperaExe = Path.Combine(verDir, "opera.exe");
+
+        try
+        {
+            Directory.CreateDirectory(verDir);
+            File.WriteAllBytes(rootOperaExe, [0x4D, 0x5A]);
+            File.WriteAllBytes(verOperaExe, [0x4D, 0x5A]);
+
+            IReadOnlyList<string> resolved = MultiTunnelWfpManager.ResolveAppExecutablePaths(rootOperaExe);
+
+            resolved.Should().Contain(rootOperaExe);
+            resolved.Should().Contain(verOperaExe);
+        }
+        finally
+        {
+            try { Directory.Delete(tempRoot, recursive: true); } catch { }
         }
     }
 }

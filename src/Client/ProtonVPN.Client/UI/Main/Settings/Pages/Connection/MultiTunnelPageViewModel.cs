@@ -75,6 +75,34 @@ public sealed class MultiTunnelRuleItem
     public required string TargetBadge { get; init; }
     public required string FallbackBadge { get; init; }
     public required string CriteriaSummary { get; init; }
+
+    public static string FormatFallbackBadge(
+        MultiTunnelRuleConfig rule,
+        IReadOnlyDictionary<string, MultiTunnelSlotConfig> slotsById)
+    {
+        if (!rule.IsEnabled || rule.TargetType != RuleTargetTypeIpcEntity.Tunnel)
+        {
+            return rule.FallbackSummary;
+        }
+
+        string targetId = string.IsNullOrWhiteSpace(rule.TargetTunnelId) ? "T1" : rule.TargetTunnelId.Trim().ToUpperInvariant();
+        if (slotsById.TryGetValue(targetId, out MultiTunnelSlotConfig? targetSlot) && targetSlot.IsConnected)
+        {
+            return rule.FallbackSummary;
+        }
+
+        return rule.FallbackBehavior switch
+        {
+            TunnelFallbackBehaviorIpcEntity.FallbackToDirect => "Fallback Direct (Active)",
+            TunnelFallbackBehaviorIpcEntity.FallbackToTunnel =>
+                !string.IsNullOrWhiteSpace(rule.FallbackTunnelId) &&
+                slotsById.TryGetValue(rule.FallbackTunnelId.Trim().ToUpperInvariant(), out MultiTunnelSlotConfig? fbSlot) &&
+                fbSlot.IsConnected
+                    ? $"Fallback {fbSlot.SlotId} (Active)"
+                    : "Kill-Switch (Offline · Blocking)",
+            _ => "Kill-Switch (Offline · Blocking)",
+        };
+    }
 }
 
 public partial class PresetTargetOption : ObservableObject
@@ -1220,6 +1248,9 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
             OnPropertyChanged(nameof(IsPresetFallbackTunnel));
             OnPropertyChanged(nameof(IsSpecificPresetTargetSelected));
 
+            Dictionary<string, MultiTunnelSlotConfig> slotsById = _multiTunnelManager.Slots
+                .ToDictionary(s => s.SlotId.ToUpperInvariant(), s => s, StringComparer.OrdinalIgnoreCase);
+
             Rules.Clear();
             foreach (MultiTunnelRuleConfig rule in _multiTunnelManager.Rules)
             {
@@ -1230,7 +1261,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
                     Name = rule.Name,
                     IsEnabled = rule.IsEnabled,
                     TargetBadge = rule.TargetSummary,
-                    FallbackBadge = rule.FallbackSummary,
+                    FallbackBadge = MultiTunnelRuleItem.FormatFallbackBadge(rule, slotsById),
                     CriteriaSummary = rule.ConditionsSummary,
                 });
             }

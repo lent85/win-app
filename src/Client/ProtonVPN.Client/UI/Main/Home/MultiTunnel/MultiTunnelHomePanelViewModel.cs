@@ -823,6 +823,9 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                 ? QuickPresetRouteOptions.FirstOrDefault(o => string.Equals(o.Key, prevQuickRouteKey, StringComparison.OrdinalIgnoreCase))
                 : null) ?? QuickPresetRouteOptions.FirstOrDefault();
 
+            Dictionary<string, MultiTunnelSlotConfig> slotsById = _multiTunnelManager.Slots
+                .ToDictionary(s => s.SlotId.ToUpperInvariant(), s => s, StringComparer.OrdinalIgnoreCase);
+
             Rules.Clear();
             foreach (MultiTunnelRuleConfig rule in _multiTunnelManager.Rules)
             {
@@ -833,7 +836,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                     Name = rule.Name,
                     IsEnabled = rule.IsEnabled,
                     TargetBadge = rule.TargetSummary,
-                    FallbackBadge = rule.FallbackSummary,
+                    FallbackBadge = MultiTunnelRuleItem.FormatFallbackBadge(rule, slotsById),
                     CriteriaSummary = rule.ConditionsSummary,
                 });
             }
