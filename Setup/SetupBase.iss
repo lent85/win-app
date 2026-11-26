@@ -97,6 +97,9 @@ Source: "..\{#SourcePath}\*.dll"; DestDir: "{app}\{#VersionFolder}"; Flags: sign
 Source: "..\{#SourcePath}\*.exe"; Excludes: "ProtonVPN.Launcher.exe,ProtonVPNService.exe,createdump.exe,RestartAgent.exe"; DestDir: "{app}\{#VersionFolder}"; Flags: signonce;
 Source: "..\{#SourcePath}\*.pri"; DestDir: "{app}\{#VersionFolder}";
 Source: "..\{#SourcePath}\*.deps.json"; DestDir: "{app}\{#VersionFolder}";
+Source: "..\{#SourcePath}\BUILD_INFO.json"; DestDir: "{app}\{#VersionFolder}"; Flags: skipifsourcedoesntexist;
+Source: "..\{#SourcePath}\CUSTOM_CHANGELOG.json"; DestDir: "{app}\{#VersionFolder}"; Flags: skipifsourcedoesntexist;
+Source: "..\{#SourcePath}\VERSION.txt"; DestDir: "{app}\{#VersionFolder}"; Flags: skipifsourcedoesntexist;
 Source: "..\{#SourcePath}\Resources\ProtonVPN.InstallActions.dll"; DestDir: "{app}\{#VersionFolder}"; Flags: signonce;
 
 ;Source: "..\{#SourcePath}\be-BY\Microsoft.ui.xaml.dll.mui"; DestDir: "{app}\{#VersionFolder}\be-BY"; Flags: signonce;

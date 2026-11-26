@@ -64,16 +64,18 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                     </Border>
 
                     <Grid Grid.Column="1"
-                          Margin="0,4">
+                          Margin="0,4"
+                          RowSpacing="6">
 
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0"
@@ -90,13 +92,56 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                                    AutomationProperties.AutomationId="CurrentVersionLabel"
                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
                                    Text="{x:Bind ViewModel.ClientVersion}" />
+
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
+                                   Text="Custom dev version" />
+                        <StackPanel Grid.Row="1"
+                                    Grid.Column="1"
+                                    Margin="0,0,8,0"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="6">
+                            <Border Padding="6,1"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource InteractionDefaultColorBrush}"
+                                    CornerRadius="4">
+                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Text="Custom" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center"
+                                       AutomationProperties.AutomationId="CustomDevVersionLabel"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.CustomVersion}" />
+                        </StackPanel>
+
                         <TextBlock Grid.Row="2"
                                    Grid.Column="0"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextWeakColorBrush}"
                                    Style="{ThemeResource BodyTextBlockStyle}"
+                                   Text="Installed build" />
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="1"
+                                   Margin="0,0,8,0"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="InstalledBuildLabel"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.InstalledBuildSummary}" />
+
+                        <TextBlock Grid.Row="3"
+                                   Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
                                    Text="{x:Bind ViewModel.Localizer.Get('Settings_About_Licensing')}" />
-                        <custom:GhostButton Grid.Row="2"
+                        <custom:GhostButton Grid.Row="3"
                                             Grid.Column="1"
                                             HorizontalAlignment="Right"
                                             VerticalAlignment="Center"
@@ -118,6 +163,89 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                 <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}"
                            Text="{x:Bind ViewModel.Localizer.Get('Settings_About_Changelog')}" />
 
+                <SelectorBar>
+                    <SelectorBarItem IsSelected="{x:Bind ViewModel.IsCustomChangelogTabSelected, Mode=TwoWay}"
+                                     Text="{x:Bind ViewModel.CustomChangelogTabHeader}" />
+                    <SelectorBarItem IsSelected="{x:Bind ViewModel.IsUpstreamChangelogTabSelected, Mode=TwoWay}"
+                                     Text="{x:Bind ViewModel.UpstreamChangelogTabHeader}" />
+                </SelectorBar>
+            </StackPanel>
+        </custom:SettingsPageContentControl.StickyContent>
+
+        <StackPanel Spacing="12">
+            <!-- Custom (Origin) Tab -->
+            <StackPanel Spacing="12"
+                        Visibility="{x:Bind ViewModel.IsCustomChangelogTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Border Padding="12"
+                        Background="{ThemeResource BackgroundWeakColorBrush}"
+                        BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.BuildBranchAndCommit}" />
+                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.UpstreamBaseSummary}" />
+                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.BuiltAtDisplay}"
+                                   Visibility="{x:Bind ViewModel.HasBuiltAtDisplay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock Foreground="{ThemeResource SignalWarningColorBrush}"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.ServiceMismatchMessage}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{x:Bind ViewModel.HasServiceVersionMismatch, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </Border>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.CustomReleases}"
+                               Visibility="{x:Bind ViewModel.HasCustomReleases, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:CustomReleaseGroup">
+                            <StackPanel Margin="0,4,0,12"
+                                        Spacing="4">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                               Text="{x:Bind DateLabel, Mode=OneTime}" />
+                                    <TextBlock VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextWeakColorBrush}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Text="{x:Bind CommitCountLabel, Mode=OneTime}" />
+                                </StackPanel>
+
+                                <ItemsControl Margin="4,0,0,0"
+                                              ItemsSource="{x:Bind Changes, Mode=OneTime}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:CustomChangeItem">
+                                            <TextBlock Margin="0,1,0,1"
+                                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                                       TextWrapping="Wrap">
+                                                <Run Text="• " />
+                                                <Run Foreground="{ThemeResource TextWeakColorBrush}"
+                                                     Text="{x:Bind CommitAndCategoryLabel, Mode=OneTime}" />
+                                                <Run Text=" " />
+                                                <Run Text="{x:Bind Subject, Mode=OneTime}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                           Style="{ThemeResource BodyTextBlockStyle}"
+                           Text="No custom changelog entries bundled with this build."
+                           Visibility="{x:Bind ViewModel.HasNoCustomReleases, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </StackPanel>
+
+            <!-- Upstream (Proton) Tab -->
+            <StackPanel Spacing="12"
+                        Visibility="{x:Bind ViewModel.IsUpstreamChangelogTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Grid Margin="0,6,0,0"
                       VerticalAlignment="Center"
                       ColumnSpacing="8"
@@ -159,48 +287,48 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                             Content="{x:Bind ViewModel.Localizer.Get('Common_Actions_TryAgain')}"
                             Style="{ThemeResource PrimaryButtonStyle}" />
                 </Grid>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Releases}">
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:Release">
+                            <StackPanel Margin="0,8,0,16"
+                                        Spacing="4">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                               Text="{x:Bind Version, Mode=OneTime}" />
+                                    <custom:TagControl VerticalAlignment="Center"
+                                                       Style="{StaticResource BetaTagControlStyle}"
+                                                       Text="{x:Bind BetaVersionLabel, Mode=OneTime}"
+                                                       Visibility="{x:Bind BetaVersionLabel, Converter={StaticResource StringVisibilityConverter}, Mode=OneTime}" />
+                                    <custom:TagControl VerticalAlignment="Center"
+                                                       Style="{StaticResource NewTagControlStyle}"
+                                                       Text="{x:Bind NewVersionLabel, Mode=OneTime}"
+                                                       Visibility="{x:Bind NewVersionLabel, Converter={StaticResource StringVisibilityConverter}, Mode=OneTime}" />
+                                    <TextBlock VerticalAlignment="Center"
+                                               Foreground="{ThemeResource TextWeakColorBrush}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Text="{x:Bind sys:String.Format('{0:d}', ReleaseDate), Mode=OneTime}"
+                                               Visibility="{x:Bind ReleaseDate, Converter={StaticResource NotNullToVisibilityConverter}}" />
+                                </StackPanel>
+
+                                <ItemsControl Margin="4,0,0,0"
+                                              ItemsSource="{x:Bind ChangeLog, Mode=OneTime}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:String">
+                                            <TextBlock Style="{ThemeResource CaptionTextBlockStyle}">
+                                                <Run Text="• " />
+                                                <Run Text="{x:Bind}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
             </StackPanel>
-        </custom:SettingsPageContentControl.StickyContent>
-
-        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Releases}">
-            <ItemsRepeater.ItemTemplate>
-                <DataTemplate x:DataType="models:Release">
-                    <StackPanel Margin="0,8,0,16"
-                                Spacing="4">
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8">
-                            <TextBlock VerticalAlignment="Center"
-                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                       Text="{x:Bind Version, Mode=OneTime}" />
-                            <custom:TagControl VerticalAlignment="Center"
-                                               Style="{StaticResource BetaTagControlStyle}"
-                                               Text="{x:Bind BetaVersionLabel, Mode=OneTime}"
-                                               Visibility="{x:Bind BetaVersionLabel, Converter={StaticResource StringVisibilityConverter}, Mode=OneTime}" />
-                            <custom:TagControl VerticalAlignment="Center"
-                                               Style="{StaticResource NewTagControlStyle}"
-                                               Text="{x:Bind NewVersionLabel, Mode=OneTime}"
-                                               Visibility="{x:Bind NewVersionLabel, Converter={StaticResource StringVisibilityConverter}, Mode=OneTime}" />
-                            <TextBlock VerticalAlignment="Center"
-                                       Foreground="{ThemeResource TextWeakColorBrush}"
-                                       Style="{ThemeResource CaptionTextBlockStyle}"
-                                       Text="{x:Bind sys:String.Format('{0:d}', ReleaseDate), Mode=OneTime}"
-                                       Visibility="{x:Bind ReleaseDate, Converter={StaticResource NotNullToVisibilityConverter}}" />
-                        </StackPanel>
-
-                        <ItemsControl Margin="4,0,0,0"
-                                      ItemsSource="{x:Bind ChangeLog, Mode=OneTime}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="sys:String">
-                                    <TextBlock Style="{ThemeResource CaptionTextBlockStyle}">
-                                        <Run Text="• " />
-                                        <Run Text="{x:Bind}" />
-                                    </TextBlock>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </DataTemplate>
-            </ItemsRepeater.ItemTemplate>
-        </ItemsRepeater>
+        </StackPanel>
     </custom:SettingsPageContentControl>
 </Page>

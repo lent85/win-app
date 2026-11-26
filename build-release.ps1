@@ -41,6 +41,9 @@ $BuildNumber = 1
 $GitHash = "nogit"
 $GitFullHash = "unknown"
 $GitBranch = "unknown"
+$UpstreamBaseCommit = ""
+$UpstreamBaseShort = ""
+$OriginRemoteUrl = ""
 try {
     $BuildNumberRaw = (& git -C $RepoRoot rev-list --count HEAD 2>$null)
     if ($LASTEXITCODE -eq 0 -and $BuildNumberRaw) {
@@ -52,6 +55,15 @@ try {
     if ($LASTEXITCODE -eq 0 -and $GitFullRaw) { $GitFullHash = $GitFullRaw.Trim() }
     $GitBranchRaw = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)
     if ($LASTEXITCODE -eq 0 -and $GitBranchRaw) { $GitBranch = $GitBranchRaw.Trim() }
+    $UpstreamRaw = (& git -C $RepoRoot log --grep="^Promote release " --format="%H" -n 1 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $UpstreamRaw) {
+        $UpstreamBaseCommit = $UpstreamRaw.Trim()
+        if ($UpstreamBaseCommit.Length -ge 7) {
+            $UpstreamBaseShort = $UpstreamBaseCommit.Substring(0, 7)
+        }
+    }
+    $RemoteRaw = (& git -C $RepoRoot remote get-url origin 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $RemoteRaw) { $OriginRemoteUrl = $RemoteRaw.Trim() }
 } catch {
     $BuildNumber = [int](Get-Date).ToUniversalTime().ToString("yyMMddHH")
 }
@@ -155,25 +167,72 @@ try {
         }
     }
 
-    # Write BUILD_INFO.json & VERSION.txt into PublishDir and DistDir
-    $BuildInfoJson = @"
-{
-  "component": "proton-win-app",
-  "baseVersion": "$BaseVersion",
-  "buildNumber": $BuildNumber,
-  "numericVersion": "$NumericVersion",
-  "win32FileVersion": "$Win32FileVersion",
-  "fullVersion": "$FullVersion",
-  "gitCommit": "$GitHash",
-  "gitCommitFull": "$GitFullHash",
-  "gitBranch": "$GitBranch",
-  "platform": "$Platform",
-  "configuration": "$Configuration",
-  "builtAtUtc": "$BuiltAtUtc"
-}
-"@
+    # Collect custom origin commits since upstream base and write BUILD_INFO.json, CUSTOM_CHANGELOG.json, VERSION.txt
+    $CustomEntries = [System.Collections.Generic.List[hashtable]]::new()
+    try {
+        $LogArgs = if ($UpstreamBaseCommit) {
+            @("-C", $RepoRoot, "log", "$UpstreamBaseCommit..HEAD", "--max-count=100", "--format=%h%x1f%ad%x1f%an%x1f%s", "--date=short")
+        } else {
+            @("-C", $RepoRoot, "log", "-n", "30", "--format=%h%x1f%ad%x1f%an%x1f%s", "--date=short")
+        }
+        $RawLogLines = @(& git @LogArgs 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $RawLogLines) {
+            $Sep = [char]0x1f
+            foreach ($Line in $RawLogLines) {
+                if ([string]::IsNullOrWhiteSpace($Line)) { continue }
+                $Parts = $Line -split $Sep, 4
+                if ($Parts.Count -lt 4) { continue }
+                $Subject = $Parts[3].Trim()
+                $Category = "change"
+                if ($Subject -match '^(feat|fix|chore|refactor|perf|docs|test|build|ci)(?:\([^)]+\))?:\s*') {
+                    $Category = $Matches[1].ToLowerInvariant()
+                }
+                $CustomEntries.Add([ordered]@{
+                    commit = $Parts[0].Trim()
+                    date = $Parts[1].Trim()
+                    author = $Parts[2].Trim()
+                    subject = $Subject
+                    category = $Category
+                })
+            }
+        }
+    } catch {
+    }
+
+    $BuildInfoObj = [ordered]@{
+        component = "proton-win-app"
+        baseVersion = $BaseVersion
+        buildNumber = $BuildNumber
+        numericVersion = $NumericVersion
+        win32FileVersion = $Win32FileVersion
+        fullVersion = $FullVersion
+        gitCommit = $GitHash
+        gitCommitFull = $GitFullHash
+        gitBranch = $GitBranch
+        platform = $Platform
+        configuration = $Configuration
+        builtAtUtc = $BuiltAtUtc
+        upstreamBaseCommit = $UpstreamBaseShort
+        originRemoteUrl = $OriginRemoteUrl
+        customCommitCount = $CustomEntries.Count
+    }
+    $BuildInfoJson = $BuildInfoObj | ConvertTo-Json -Depth 4
+
+    $CustomChangelogObj = [ordered]@{
+        baseVersion = $BaseVersion
+        upstreamBaseCommit = $UpstreamBaseShort
+        branch = $GitBranch
+        originRemoteUrl = $OriginRemoteUrl
+        fullVersion = $FullVersion
+        builtAtUtc = $BuiltAtUtc
+        entries = $CustomEntries.ToArray()
+    }
+    $CustomChangelogJson = $CustomChangelogObj | ConvertTo-Json -Depth 5
+
     [System.IO.File]::WriteAllText((Join-Path $PublishDir "BUILD_INFO.json"), $BuildInfoJson, [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllText((Join-Path $DistDir "BUILD_INFO.json"), $BuildInfoJson, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $PublishDir "CUSTOM_CHANGELOG.json"), $CustomChangelogJson, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $DistDir "CUSTOM_CHANGELOG.json"), $CustomChangelogJson, [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllText((Join-Path $PublishDir "VERSION.txt"), "$FullVersion`n", [System.Text.UTF8Encoding]::new($false))
 
     # 3. Run unit tests

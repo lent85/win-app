@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -44,6 +44,33 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
     private string _clientVersion;
 
     [ObservableProperty]
+    private string _customVersion;
+
+    [ObservableProperty]
+    private string _installedBuildSummary;
+
+    [ObservableProperty]
+    private string _buildBranchAndCommit;
+
+    [ObservableProperty]
+    private string _upstreamBaseSummary;
+
+    [ObservableProperty]
+    private string _builtAtDisplay;
+
+    [ObservableProperty]
+    private bool _hasServiceVersionMismatch;
+
+    [ObservableProperty]
+    private string _serviceMismatchMessage;
+
+    [ObservableProperty]
+    private bool _isCustomChangelogTabSelected = true;
+
+    [ObservableProperty]
+    private bool _isUpstreamChangelogTabSelected;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsToShowErrorComponent))]
     [NotifyPropertyChangedFor(nameof(IsToShowLoadingComponent))]
     private AppUpdateStatus _latestAppUpdateStatus = AppUpdateStatus.None;
@@ -52,7 +79,20 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
 
     public bool IsToShowLoadingComponent => LatestAppUpdateStatus == AppUpdateStatus.Checking;
 
+    public bool HasBuiltAtDisplay => !string.IsNullOrEmpty(BuiltAtDisplay);
+
+    public string CustomChangelogTabHeader { get; }
+
+    public string UpstreamChangelogTabHeader =>
+        Releases.Count > 0 ? $"Upstream (Proton · {Releases.Count})" : "Upstream (Proton)";
+
+    public bool HasCustomReleases => CustomReleases.Count > 0;
+
+    public bool HasNoCustomReleases => CustomReleases.Count == 0;
+
     public SmartObservableCollection<Release> Releases { get; } = [];
+
+    public SmartObservableCollection<CustomReleaseGroup> CustomReleases { get; } = [];
 
     public override string Title => Localizer.Get("Settings_About_Title");
 
@@ -82,6 +122,46 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
         _releaseViewModelFactory = releaseViewModelFactory;
 
         ClientVersion = AssemblyVersion.Get();
+
+        InstalledBuildSnapshot snapshot = CustomBuildInfoLoader.Load(assembly: typeof(AboutPageViewModel).Assembly);
+        CustomVersion = snapshot.CustomFullVersion;
+        InstalledBuildSummary = !string.IsNullOrWhiteSpace(snapshot.InstalledServiceVersion) &&
+                                !string.Equals(snapshot.InstalledServiceVersion, snapshot.InstalledBuildVersion, StringComparison.OrdinalIgnoreCase)
+            ? $"v{snapshot.InstalledBuildVersion} (Service {snapshot.InstalledServiceVersion})"
+            : $"v{snapshot.InstalledBuildVersion}";
+        BuildBranchAndCommit = string.IsNullOrEmpty(snapshot.GitCommit)
+            ? $"origin/{snapshot.GitBranch}"
+            : $"origin/{snapshot.GitBranch}  •  commit {snapshot.GitCommit}";
+        string baseCommitText = string.IsNullOrEmpty(snapshot.UpstreamBaseCommit)
+            ? string.Empty
+            : $" ({snapshot.UpstreamBaseCommit})";
+        UpstreamBaseSummary = $"Upstream base: {snapshot.UpstreamBaseVersion}{baseCommitText}  •  {snapshot.CustomCommitCount} custom commit(s)";
+        BuiltAtDisplay = snapshot.BuiltAtUtc.HasValue
+            ? $"Built: {snapshot.BuiltAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}  •  {snapshot.InstallFolderName}"
+            : snapshot.InstallFolderName;
+        HasServiceVersionMismatch = snapshot.HasServiceVersionMismatch;
+        ServiceMismatchMessage = HasServiceVersionMismatch
+            ? $"Installed service ({snapshot.InstalledServiceVersion}) differs from running build ({snapshot.RunningBuildVersion}). Rebuild/reinstall to sync."
+            : string.Empty;
+
+        CustomChangelogTabHeader = snapshot.CustomCommitCount > 0
+            ? $"Custom (Origin · {snapshot.CustomCommitCount})"
+            : "Custom (Origin)";
+
+        List<CustomReleaseGroup> grouped = CustomBuildInfoLoader.GroupEntriesByDate(snapshot.Entries)
+            .Select(g => new CustomReleaseGroup
+            {
+                DateLabel = g.DateLabel,
+                CommitCountLabel = g.Entries.Count == 1 ? "1 change" : $"{g.Entries.Count} changes",
+                Changes = g.Entries.Select(e => new CustomChangeItem
+                {
+                    CommitShort = e.Commit,
+                    Category = e.Category,
+                    Subject = e.Subject,
+                }).ToList(),
+            })
+            .ToList();
+        CustomReleases.Reset(grouped);
     }
 
     public void Receive(ClientUpdateStateChangedMessage message)
@@ -96,6 +176,7 @@ public partial class AboutPageViewModel : SettingsPageViewModelBase,
         if (message.State?.ReleaseHistory.Count > 0)
         {
             Releases.Reset(_releaseViewModelFactory.GetReleases(message.State.ReleaseHistory));
+            OnPropertyChanged(nameof(UpstreamChangelogTabHeader));
         }
 
         OnPropertyChanged(nameof(IsUpdateAvailable));

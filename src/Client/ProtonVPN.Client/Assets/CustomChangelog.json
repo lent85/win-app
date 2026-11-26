@@ -1,0 +1,94 @@
+{
+  "baseVersion": "5.1.10",
+  "upstreamBaseCommit": "52b9967",
+  "branch": "master",
+  "originRemoteUrl": "https://github.com/lent85/win-app.git",
+  "fullVersion": "5.1.10-dev (origin/master)",
+  "builtAtUtc": "2026-11-26T11:30:00Z",
+  "entries": [
+    {
+      "commit": "working",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "fix(multi-tunnel): fix secondary tunnel on-link NextHop route, IPv6/QUIC WFP fallback, Opera Portable subfolder matching, and Kill-Switch offline badge",
+      "category": "fix"
+    },
+    {
+      "commit": "a68b0ce",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "feat: introduce multi-tunnel support across client, service, and UI components",
+      "category": "feat"
+    },
+    {
+      "commit": "0048aff",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "feat: enhance multi-tunnel routing preset management and matching",
+      "category": "feat"
+    },
+    {
+      "commit": "6022df0",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "feat: add multi-tunnel routing presets, network helper, and batch slot controls",
+      "category": "feat"
+    },
+    {
+      "commit": "f373c0a",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "feat: implement Skia renderer and UI components for interactive map control",
+      "category": "feat"
+    },
+    {
+      "commit": "3c24df7",
+      "date": "2026-11-26",
+      "author": "Casper Ngo",
+      "subject": "feat: introduce multi-tunnel feature with management, traffic monitoring, and UI components",
+      "category": "feat"
+    },
+    {
+      "commit": "230308b",
+      "date": "2026-11-25",
+      "author": "Casper Ngo",
+      "subject": "feat: implement multi-tunnel feature and setup configuration",
+      "category": "feat"
+    },
+    {
+      "commit": "510a3e3",
+      "date": "2026-11-25",
+      "author": "Casper Ngo",
+      "subject": "feat: add Inno Setup configuration and global assembly info for Windows app build",
+      "category": "feat"
+    },
+    {
+      "commit": "ed3f5dd",
+      "date": "2026-11-25",
+      "author": "Casper Ngo",
+      "subject": "feat: add multi-tunnel feature and related UI components",
+      "category": "feat"
+    },
+    {
+      "commit": "b379147",
+      "date": "2026-11-24",
+      "author": "Casper Ngo",
+      "subject": "feat: implement multi-tunnel client logic and service orchestration",
+      "category": "feat"
+    },
+    {
+      "commit": "57dc8b2",
+      "date": "2026-11-24",
+      "author": "Casper Ngo",
+      "subject": "chore: ignore build and release distribution artifacts",
+      "category": "chore"
+    },
+    {
+      "commit": "0d867a3",
+      "date": "2026-11-24",
+      "author": "Casper Ngo",
+      "subject": "feat: add release build scripts and distribution artifacts",
+      "category": "feat"
+    }
+  ]
+}
