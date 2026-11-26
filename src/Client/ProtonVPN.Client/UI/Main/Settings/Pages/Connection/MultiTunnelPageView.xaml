@@ -206,6 +206,192 @@ the Free Software Foundation, either version 3 of the License, or
                 </StackPanel>
             </Border>
 
+            <!-- 3.5 Routing Service Templates / Presets (Google, Facebook, AI, LAN, etc.) -->
+            <Border Padding="16"
+                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       Text="Routing Service Templates / Presets" />
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="Select ready-made rules (Google, Facebook, AI, Streaming, LAN...) and Add or Replace your routing config." />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="1"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.SelectedPresetCountText}" />
+
+                        <Button Grid.Column="2"
+                                Command="{x:Bind ViewModel.SelectAllVisiblePresetsCommand, Mode=OneTime}"
+                                Content="Select All"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+
+                        <Button Grid.Column="3"
+                                Command="{x:Bind ViewModel.ClearSelectedPresetsCommand, Mode=OneTime}"
+                                Content="Clear"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="170" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Grid.Column="0"
+                                 PlaceholderText="Search templates (e.g., google, facebook, openai, lan)..."
+                                 Text="{x:Bind ViewModel.PresetSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <ComboBox Grid.Column="1"
+                                  HorizontalAlignment="Stretch"
+                                  ItemsSource="{x:Bind ViewModel.PresetCategoryOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPresetCategory, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+                    </Grid>
+
+                    <ScrollViewer MaxHeight="220"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.FilteredPresets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:MultiTunnelPresetItem">
+                                    <Border Margin="0,3,0,0"
+                                            Padding="10,7"
+                                            Background="{ThemeResource InteractionDefaultColorBrush}"
+                                            BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0"
+                                                      MinWidth="24"
+                                                      VerticalAlignment="Center"
+                                                      Click="OnPresetCheckClick"
+                                                      IsChecked="{x:Bind IsSelected, Mode=OneWay}"
+                                                      Style="{StaticResource CheckBoxStyle}"
+                                                      Tag="{x:Bind Id}" />
+
+                                            <StackPanel Grid.Column="1"
+                                                        Spacing="2">
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="6">
+                                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                               Text="{x:Bind Name}" />
+                                                    <Border Padding="6,1"
+                                                            VerticalAlignment="Center"
+                                                            Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                            CornerRadius="4">
+                                                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Text="{x:Bind Category}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Text="{x:Bind Description}"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Text="{x:Bind ConditionPreview}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2"
+                                                    Padding="8,2"
+                                                    VerticalAlignment="Center"
+                                                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                    CornerRadius="4">
+                                                <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Text="{x:Bind RecommendedTargetLabel}" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="95" />
+                            <ColumnDefinition Width="165" />
+                            <ColumnDefinition Width="95" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox Grid.Column="0"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Route Override"
+                                  ItemsSource="{x:Bind ViewModel.PresetTargetTypeOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPresetTargetType, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+
+                        <ComboBox Grid.Column="1"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Tunnel"
+                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPresetTunnelId, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}"
+                                  Visibility="{x:Bind ViewModel.IsPresetTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                        <ComboBox Grid.Column="2"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Fallback Override"
+                                  ItemsSource="{x:Bind ViewModel.PresetFallbackOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackBehavior, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}"
+                                  Visibility="{x:Bind ViewModel.IsPresetFallbackAllowed, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                        <ComboBox Grid.Column="3"
+                                  HorizontalAlignment="Stretch"
+                                  Header="Fallback Slot"
+                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackTunnelId, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}"
+                                  Visibility="{x:Bind ViewModel.IsPresetFallbackTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Command="{x:Bind ViewModel.AddSelectedPresetsCommand, Mode=OneTime}"
+                                Content="+ Add to Routing"
+                                IsEnabled="{x:Bind ViewModel.HasSelectedPresets}"
+                                Style="{StaticResource PrimaryButtonStyle}" />
+                        <Button Command="{x:Bind ViewModel.ReplaceWithSelectedPresetsCommand, Mode=OneTime}"
+                                Content="Replace Routing"
+                                IsEnabled="{x:Bind ViewModel.HasSelectedPresets}"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button Command="{x:Bind ViewModel.FillEditorFromSelectedPresetCommand, Mode=OneTime}"
+                                Content="Load into Editor"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Text="{x:Bind ViewModel.PresetStatusText}"
+                                   Visibility="{x:Bind ViewModel.HasPresetStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- 4. Compact 2-Line Priority Rules Table -->
             <Border Padding="16"
                     Background="{ThemeResource BackgroundWeakColorBrush}"

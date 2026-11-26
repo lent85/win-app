@@ -23,6 +23,7 @@ public interface IMultiTunnelManager
     IReadOnlyList<MultiTunnelRuleConflict> Conflicts { get; }
     int EnabledRuleCount { get; }
     int ConnectedSlotCount { get; }
+    bool IsAnySlotConnecting { get; }
 
     Task SetEnabledAsync(bool enabled);
     Task SetDefaultRoutingAsync(RuleTargetTypeIpcEntity defaultTargetType, string defaultTunnelId);
@@ -31,9 +32,18 @@ public interface IMultiTunnelManager
     Task RemoveSlotAsync(string slotId);
     Task<bool> ConnectSlotAsync(string slotId);
     Task DisconnectSlotAsync(string slotId);
+    Task ConnectAllSlotsAsync();
+    Task DisconnectAllSlotsAsync();
     Task<string> HandleMapCountryClickAsync(string countryCode);
 
     Task AddRuleAsync(MultiTunnelRuleConfig rule);
+    Task<int> ApplyRoutingPresetsAsync(
+        IEnumerable<RoutingRulePreset> presets,
+        RoutingPresetApplyMode mode,
+        RuleTargetTypeIpcEntity? targetTypeOverride = null,
+        string? targetTunnelIdOverride = null,
+        TunnelFallbackBehaviorIpcEntity? fallbackBehaviorOverride = null,
+        string? fallbackTunnelIdOverride = null);
     Task UpdateRuleAsync(MultiTunnelRuleConfig rule);
     Task SetRuleEnabledAsync(Guid ruleId, bool isEnabled);
     Task DeleteRuleAsync(Guid ruleId);

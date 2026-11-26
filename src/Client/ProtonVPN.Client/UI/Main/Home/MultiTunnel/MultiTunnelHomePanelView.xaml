@@ -289,6 +289,38 @@ the Free Software Foundation, either version 3 of the License, or
                         <StackPanel Spacing="8"
                                     Visibility="{x:Bind ViewModel.IsRulesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
 
+                            <!-- 1-Row Service Template Quick-Apply -->
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="128" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <ComboBox Grid.Column="0"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{x:Bind ViewModel.AvailablePresets}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedQuickPreset, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" />
+
+                                <ComboBox Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{x:Bind ViewModel.QuickPresetRouteOptions}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedQuickPresetRoute, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" />
+
+                                <Button Grid.Column="2"
+                                        Command="{x:Bind ViewModel.AddSelectedPresetCommand, Mode=OneTime}"
+                                        Content="+ Add"
+                                        Style="{StaticResource PrimaryButtonStyle}" />
+
+                                <Button Grid.Column="3"
+                                        Command="{x:Bind ViewModel.ReplaceWithSelectedPresetCommand, Mode=OneTime}"
+                                        Content="Replace"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                            </Grid>
+
                             <!-- 2-Row Inline Quick Rule Editor -->
                             <StackPanel Spacing="6">
                                 <Grid ColumnSpacing="6">

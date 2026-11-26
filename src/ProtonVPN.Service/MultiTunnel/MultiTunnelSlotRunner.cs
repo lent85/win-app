@@ -27,6 +27,7 @@ using ProtonVPN.EntityMapping.Contracts;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.ConnectLogs;
 using ProtonVPN.Logging.Contracts.Events.DisconnectLogs;
+using ProtonVPN.OperatingSystems.Network.Contracts;
 using ProtonVPN.OperatingSystems.Network.Contracts.Routing;
 using ProtonVPN.OperatingSystems.Services.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
@@ -64,6 +65,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
     private readonly IIpv4GatewayResolver _ipv4GatewayResolver;
     private readonly MultiTunnelOrchestrator _orchestrator;
     private readonly IPermittedRemoteAddress? _permittedRemoteAddress;
+    private readonly ISystemNetworkInterfaces? _networkInterfaces;
 
     public MultiTunnelSlotRunner(
         ILogger logger,
@@ -74,7 +76,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         IRoutingTableHelper routingTableHelper,
         IIpv4GatewayResolver ipv4GatewayResolver,
         MultiTunnelOrchestrator orchestrator,
-        IPermittedRemoteAddress? permittedRemoteAddress = null)
+        IPermittedRemoteAddress? permittedRemoteAddress = null,
+        ISystemNetworkInterfaces? networkInterfaces = null)
     {
         _logger = logger;
         _staticConfig = staticConfig;
@@ -85,6 +88,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         _ipv4GatewayResolver = ipv4GatewayResolver;
         _orchestrator = orchestrator;
         _permittedRemoteAddress = permittedRemoteAddress;
+        _networkInterfaces = networkInterfaces;
     }
 
     public async Task<MultiTunnelSlotConnectionResultIpcEntity> ConnectSlotAsync(
@@ -157,7 +161,6 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 .AppendLine("[Interface]")
                 .AppendLine($"PrivateKey = {privateKeyBase64}")
                 .AppendLine($"Address = {clientIpv4}/32")
-                .AppendLine($"DNS = {gatewayIpv4}")
                 .AppendLine("Table = off")
                 .AppendLine("[Peer]")
                 .AppendLine($"PublicKey = {endpoint.X25519PublicKey.Base64}")
@@ -190,20 +193,9 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
 
             _permittedRemoteAddress?.Add([endpoint.Ip], FilterAction.HardPermit);
 
-            if (shouldCreateRoute &&
-                NetworkAddress.TryParse(endpoint.Ip, out NetworkAddress endpointAddress) &&
-                _ipv4GatewayResolver.TryGetBestIpv4Gateway(_staticConfig.GetWireGuardHardwareId(), out Ipv4GatewayInfo? gatewayInfo) &&
-                gatewayInfo is not null)
+            if (shouldCreateRoute && NetworkAddress.TryParse(endpoint.Ip, out NetworkAddress endpointAddress))
             {
-                _routingTableHelper.DeleteRoute(endpoint.Ip, isIpv6: false);
-                _routingTableHelper.CreateRoute(new RouteConfiguration
-                {
-                    Destination = endpointAddress,
-                    Gateway = gatewayInfo.GatewayAddress,
-                    InterfaceIndex = gatewayInfo.Interface.Index,
-                    Metric = gatewayInfo.InterfaceMetric,
-                    IsIpv6 = endpointAddress.IsIpV6,
-                });
+                CreatePhysicalEndpointRoute(endpoint.Ip, endpointAddress);
             }
 
             IService service = _serviceFactory.Get(GetSlotServiceName(slotId));
@@ -247,7 +239,24 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 };
             }
 
-            _logger.Info<ConnectLog>($"MultiTunnelSlotRunner: Connected slot {slotId} -> {endpoint.Name} ({endpoint.Ip}:{port}, local {clientIpv4}).");
+            uint resolvedInterfaceIndex = await WaitForSlotInterfaceIndexAsync(
+                slotId,
+                clientIpv4,
+                cancellationToken).ConfigureAwait(false);
+
+            if (_orchestrator.GetSlotStates().TryGetValue(slotId, out TunnelSlotRuntimeState? liveSlot))
+            {
+                liveSlot.InterfaceIndex = resolvedInterfaceIndex;
+            }
+
+            if (resolvedInterfaceIndex > 0 &&
+                IPAddress.TryParse(clientIpv4, out IPAddress? parsedClientIp) &&
+                IPAddress.TryParse(gatewayIpv4, out IPAddress? parsedGatewayIp))
+            {
+                ConfigureSlotInterfaceRoutes(resolvedInterfaceIndex, request.SlotIndex, parsedClientIp, parsedGatewayIp);
+            }
+
+            _logger.Info<ConnectLog>($"MultiTunnelSlotRunner: Connected slot {slotId} -> {endpoint.Name} ({endpoint.Ip}:{port}, local {clientIpv4}, ifIdx {resolvedInterfaceIndex}).");
 
             return new MultiTunnelSlotConnectionResultIpcEntity
             {
@@ -284,6 +293,21 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         }
 
         string normalizedId = slotId.Trim().ToUpperInvariant();
+        uint interfaceIndex = 0;
+        IPAddress? clientIp = null;
+        IPAddress? gatewayIp = null;
+        if (_orchestrator.GetSlotStates().TryGetValue(normalizedId, out TunnelSlotRuntimeState? runtimeSlot))
+        {
+            interfaceIndex = runtimeSlot.InterfaceIndex;
+            clientIp = runtimeSlot.ClientIpv4;
+            gatewayIp = runtimeSlot.ServerGatewayIpv4;
+        }
+
+        if (interfaceIndex > 0 && clientIp is not null && gatewayIp is not null)
+        {
+            CleanupSlotInterfaceRoutes(interfaceIndex, clientIp, gatewayIp);
+        }
+
         await StopSlotServiceAsync(normalizedId).ConfigureAwait(false);
 
         string configPath = GetSlotConfigPath(normalizedId);
@@ -411,4 +435,149 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
     }
 
     private string GetSlotServiceName(string slotId) => $"{_staticConfig.WireGuard.ServiceName} {slotId}";
+
+    private void CreatePhysicalEndpointRoute(string endpointIp, NetworkAddress endpointAddress)
+    {
+        NetworkAddress? gatewayAddr = null;
+        uint interfaceIndex = 0;
+        uint metric = 0;
+
+        if (MultiTunnelNetworkHelper.TryResolvePhysicalInterface(
+                _networkInterfaces,
+                _routingTableHelper,
+                out INetworkInterface? physIface,
+                out _,
+                out _,
+                out IPAddress? physGw,
+                out uint physMetric) &&
+            physIface is not null &&
+            physGw is not null &&
+            NetworkAddress.TryParse(physGw.ToString(), out NetworkAddress parsedPhysGw))
+        {
+            gatewayAddr = parsedPhysGw;
+            interfaceIndex = physIface.Index;
+            metric = physMetric;
+        }
+        else if (_ipv4GatewayResolver.TryGetBestIpv4Gateway(_staticConfig.GetWireGuardHardwareId(), out Ipv4GatewayInfo? gatewayInfo) &&
+                 gatewayInfo is not null &&
+                 !MultiTunnelNetworkHelper.IsTunnelSubnetIpv4(gatewayInfo.GatewayAddress.Ip))
+        {
+            gatewayAddr = gatewayInfo.GatewayAddress;
+            interfaceIndex = gatewayInfo.Interface.Index;
+            metric = gatewayInfo.InterfaceMetric;
+        }
+
+        if (gatewayAddr is null || interfaceIndex == 0)
+        {
+            _logger.Warn<ConnectLog>($"MultiTunnelSlotRunner: Physical gateway unavailable for endpoint {endpointIp}; skipping /32 route.");
+            return;
+        }
+
+        _routingTableHelper.DeleteRoute(endpointIp, isIpv6: false);
+        _routingTableHelper.CreateRoute(new RouteConfiguration
+        {
+            Destination = endpointAddress,
+            Gateway = gatewayAddr.Value,
+            InterfaceIndex = interfaceIndex,
+            Metric = metric,
+            IsIpv6 = endpointAddress.IsIpV6,
+        });
+    }
+
+    private async Task<uint> WaitForSlotInterfaceIndexAsync(string slotId, string clientIpv4, CancellationToken cancellationToken)
+    {
+        if (_networkInterfaces is null)
+        {
+            return 0;
+        }
+
+        string expectedAdapterName = $"ProtonVPN-{slotId}";
+        IPAddress.TryParse(clientIpv4, out IPAddress? parsedClient);
+
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                INetworkInterface[] interfaces = _networkInterfaces.GetInterfaces();
+                INetworkInterface? match = interfaces.FirstOrDefault(i =>
+                    i.Index > 0 &&
+                    (string.Equals(i.Name, expectedAdapterName, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(i.Description, expectedAdapterName, StringComparison.OrdinalIgnoreCase) ||
+                     (parsedClient is not null && i.GetUnicastAddresses().Any(a => !a.IsIpV6 && a.Ip.Equals(parsedClient)))));
+
+                if (match is not null)
+                {
+                    return match.Index;
+                }
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(150, cancellationToken).ConfigureAwait(false);
+        }
+
+        return 0;
+    }
+
+    private void ConfigureSlotInterfaceRoutes(uint interfaceIndex, int slotIndex, IPAddress clientIp, IPAddress gatewayIp)
+    {
+        if (interfaceIndex == 0 ||
+            !NetworkAddress.TryParse("0.0.0.0/0", out NetworkAddress defaultIpv4) ||
+            !NetworkAddress.TryParse("0.0.0.0/1", out NetworkAddress splitLow) ||
+            !NetworkAddress.TryParse("128.0.0.0/1", out NetworkAddress splitHigh) ||
+            !NetworkAddress.TryParse(clientIp.ToString(), out NetworkAddress clientNet) ||
+            !NetworkAddress.TryParse($"{gatewayIp}/32", out NetworkAddress gatewayHost))
+        {
+            return;
+        }
+
+        // Remove any competing low-metric routes scoped specifically to this slot adapter
+        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitLow, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+        _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = splitHigh, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+
+        uint highMetric = 32000u + (uint)Math.Max(0, slotIndex);
+
+        _routingTableHelper.CreateRoute(new RouteConfiguration
+        {
+            Destination = defaultIpv4,
+            Gateway = clientNet,
+            InterfaceIndex = interfaceIndex,
+            Metric = highMetric,
+            IsIpv6 = false,
+        });
+
+        _routingTableHelper.CreateRoute(new RouteConfiguration
+        {
+            Destination = gatewayHost,
+            Gateway = clientNet,
+            InterfaceIndex = interfaceIndex,
+            Metric = highMetric,
+            IsIpv6 = false,
+        });
+    }
+
+    private void CleanupSlotInterfaceRoutes(uint interfaceIndex, IPAddress clientIp, IPAddress gatewayIp)
+    {
+        if (interfaceIndex == 0 ||
+            !NetworkAddress.TryParse("0.0.0.0/0", out NetworkAddress defaultIpv4) ||
+            !NetworkAddress.TryParse(clientIp.ToString(), out NetworkAddress clientNet) ||
+            !NetworkAddress.TryParse($"{gatewayIp}/32", out NetworkAddress gatewayHost))
+        {
+            return;
+        }
+
+        try
+        {
+            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = defaultIpv4, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+            _routingTableHelper.DeleteRoute(new RouteConfiguration { Destination = gatewayHost, Gateway = clientNet, InterfaceIndex = interfaceIndex, IsIpv6 = false });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn<DisconnectLog>($"MultiTunnelSlotRunner: Failed to clean routes on interface {interfaceIndex}: {ex.Message}");
+        }
+    }
 }

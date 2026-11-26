@@ -24,6 +24,7 @@ using ProtonVPN.Common.Legacy.Abstract;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
+using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
 namespace ProtonVPN.Client.Logic.Connection.Tests.MultiTunnel;
 
@@ -171,5 +172,165 @@ public class MultiTunnelManagerTests
         RoutingDecisionIpcEntity previewDecision = await manager.EvaluateTrafficAsync(query);
         Assert.IsTrue(previewDecision.Explanation.Contains("Local preview"));
         Assert.AreEqual(3, previewDecision.MatchedRulePriority);
+    }
+
+    [TestMethod]
+    public void MultiTunnelRoutingPresetCatalog_ContainsExpectedServicePresetsWithValidPatterns()
+    {
+        IReadOnlyList<RoutingRulePreset> all = MultiTunnelRoutingPresetCatalog.All;
+        Assert.IsTrue(all.Count >= 16);
+        Assert.AreEqual(all.Count, all.Select(p => p.Id).Distinct(System.StringComparer.OrdinalIgnoreCase).Count());
+
+        RoutingRulePreset? google = MultiTunnelRoutingPresetCatalog.FindById("google-services");
+        RoutingRulePreset? facebook = MultiTunnelRoutingPresetCatalog.FindById("facebook-services");
+        Assert.IsNotNull(google);
+        Assert.IsNotNull(facebook);
+        Assert.IsTrue(google.DomainPattern!.Contains("*.google.com"));
+        Assert.IsTrue(facebook.DomainPattern!.Contains("*.facebook.com"));
+
+        foreach (RoutingRulePreset preset in all)
+        {
+            MultiTunnelRuleConfig rule = preset.ToRuleConfig(["T1", "T2", "T3"]);
+            Assert.IsTrue(rule.HasAnyCondition, $"Preset '{preset.Id}' produced a rule with no condition.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(rule.Name));
+        }
+    }
+
+    [TestMethod]
+    public async Task ApplyRoutingPresetsAsync_AddMode_InsertsAtTopPreservesExistingAndRoutesGoogleAndFacebook()
+    {
+        MultiTunnelManager manager = CreateManager();
+        MultiTunnelSlotConfig? t2 = await manager.AddSlotAsync("US", "US#1");
+        Assert.IsNotNull(t2);
+        int initialCount = manager.Rules.Count;
+
+        RoutingRulePreset google = MultiTunnelRoutingPresetCatalog.FindById("google-services")!;
+        RoutingRulePreset facebook = MultiTunnelRoutingPresetCatalog.FindById("facebook-services")!;
+
+        int applied = await manager.ApplyRoutingPresetsAsync(
+            [google, facebook],
+            RoutingPresetApplyMode.Add,
+            RuleTargetTypeIpcEntity.Tunnel,
+            "T2",
+            TunnelFallbackBehaviorIpcEntity.FallbackToDirect);
+
+        Assert.AreEqual(2, applied);
+        Assert.AreEqual(initialCount + 2, manager.Rules.Count);
+        Assert.AreEqual("Google Services", manager.Rules[0].Name);
+        Assert.AreEqual(1, manager.Rules[0].PriorityOrder);
+        Assert.AreEqual("T2", manager.Rules[0].TargetTunnelId);
+        Assert.AreEqual(TunnelFallbackBehaviorIpcEntity.FallbackToDirect, manager.Rules[0].FallbackBehavior);
+        Assert.AreEqual("Facebook / Meta Services", manager.Rules[1].Name);
+        Assert.AreEqual(2, manager.Rules[1].PriorityOrder);
+
+        _vpnServiceCaller.EvaluateMultiTunnelTrafficAsync(Arg.Any<TrafficQueryIpcEntity>())
+            .Returns(Result.Fail<RoutingDecisionIpcEntity>("Offline"));
+
+        RoutingDecisionIpcEntity googleDecision = await manager.EvaluateTrafficAsync(new TrafficQueryIpcEntity
+        {
+            ProcessName = "chrome",
+            Domain = "mail.google.com",
+            RemotePort = 443,
+            Protocol = RuleProtocolIpcEntity.Tcp,
+        });
+        Assert.AreEqual(1, googleDecision.MatchedRulePriority);
+        Assert.AreEqual("Google Services", googleDecision.MatchedRuleName);
+
+        RoutingDecisionIpcEntity fbDecision = await manager.EvaluateTrafficAsync(new TrafficQueryIpcEntity
+        {
+            ProcessName = "chrome",
+            Domain = "www.facebook.com",
+            RemotePort = 443,
+            Protocol = RuleProtocolIpcEntity.Tcp,
+        });
+        Assert.AreEqual(2, fbDecision.MatchedRulePriority);
+        Assert.AreEqual("Facebook / Meta Services", fbDecision.MatchedRuleName);
+    }
+
+    [TestMethod]
+    public async Task ApplyRoutingPresetsAsync_ReplaceMode_ReplacesAllExistingRulesAndRespectsOverrides()
+    {
+        MultiTunnelManager manager = CreateManager();
+
+        RoutingRulePreset ai = MultiTunnelRoutingPresetCatalog.FindById("ai-assistants")!;
+        RoutingRulePreset lan = MultiTunnelRoutingPresetCatalog.FindById("private-lan")!;
+
+        // Only T1 exists on manager, so ai-assistants (default T2) must safely resolve to T1
+        int applied = await manager.ApplyRoutingPresetsAsync([ai, lan], RoutingPresetApplyMode.Replace);
+
+        Assert.AreEqual(2, applied);
+        Assert.AreEqual(2, manager.Rules.Count);
+        Assert.AreEqual(1, manager.Rules[0].PriorityOrder);
+        Assert.AreEqual("AI Assistants (OpenAI, Claude, Gemini)", manager.Rules[0].Name);
+        Assert.AreEqual(RuleTargetTypeIpcEntity.Tunnel, manager.Rules[0].TargetType);
+        Assert.AreEqual("T1", manager.Rules[0].TargetTunnelId);
+        Assert.AreEqual(2, manager.Rules[1].PriorityOrder);
+        Assert.AreEqual(RuleTargetTypeIpcEntity.Direct, manager.Rules[1].TargetType);
+
+        // Override all selected templates to Direct
+        RoutingRulePreset google = MultiTunnelRoutingPresetCatalog.FindById("google-services")!;
+        int replacedDirect = await manager.ApplyRoutingPresetsAsync(
+            [google],
+            RoutingPresetApplyMode.Replace,
+            RuleTargetTypeIpcEntity.Direct);
+
+        Assert.AreEqual(1, replacedDirect);
+        Assert.AreEqual(1, manager.Rules.Count);
+        Assert.AreEqual(RuleTargetTypeIpcEntity.Direct, manager.Rules[0].TargetType);
+    }
+
+    [TestMethod]
+    public async Task ConnectAllAndDisconnectAllSlotsAsync_ConnectsAndDisconnectsAllSlotsCleanly()
+    {
+        _vpnServiceCaller.ConnectMultiTunnelSlotAsync(Arg.Any<MultiTunnelSlotConnectionRequestIpcEntity>())
+            .Returns(ci => Result.Ok(new MultiTunnelSlotConnectionResultIpcEntity
+            {
+                Success = true,
+                SlotId = ci.Arg<MultiTunnelSlotConnectionRequestIpcEntity>().SlotId,
+                ConnectedServerName = "US#1",
+                ConnectedEntryIp = "185.159.158.10",
+            }));
+        _vpnServiceCaller.DisconnectMultiTunnelSlotAsync(Arg.Any<string>())
+            .Returns(Task.CompletedTask);
+
+        ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators.IConnectionRequestCreator requestCreator =
+            Substitute.For<ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators.IConnectionRequestCreator>();
+        requestCreator.CreateAsync(Arg.Any<ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.IConnectionIntent>())
+            .Returns(new ConnectionRequestIpcEntity());
+
+        MultiTunnelManager manager = new(
+            _logger,
+            _settings,
+            _vpnServiceCaller,
+            _connectionManager,
+            _eventMessageSender,
+            requestCreator);
+
+        await manager.SetEnabledAsync(true);
+        await manager.AddSlotAsync("US", "US#1");
+        await manager.AddSlotAsync("CH", "CH#1");
+        Assert.AreEqual(3, manager.Slots.Count);
+        Assert.IsFalse(manager.IsAnySlotConnecting);
+
+        await manager.ConnectAllSlotsAsync();
+
+        await _connectionManager.Received(1).ConnectAsync(
+            VpnTriggerDimension.CountriesCountry,
+            Arg.Any<ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.IConnectionIntent>());
+        await _vpnServiceCaller.Received(1).ConnectMultiTunnelSlotAsync(
+            Arg.Is<MultiTunnelSlotConnectionRequestIpcEntity>(r => r.SlotId == "T2"));
+        await _vpnServiceCaller.Received(1).ConnectMultiTunnelSlotAsync(
+            Arg.Is<MultiTunnelSlotConnectionRequestIpcEntity>(r => r.SlotId == "T3"));
+        Assert.IsTrue(manager.Slots.First(s => s.SlotId == "T2").IsConnected);
+        Assert.IsTrue(manager.Slots.First(s => s.SlotId == "T3").IsConnected);
+
+        _connectionManager.IsConnected.Returns(true);
+        await manager.DisconnectAllSlotsAsync();
+
+        await _vpnServiceCaller.Received(1).DisconnectMultiTunnelSlotAsync("T3");
+        await _vpnServiceCaller.Received(1).DisconnectMultiTunnelSlotAsync("T2");
+        await _connectionManager.Received(1).DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+        Assert.IsFalse(manager.Slots.First(s => s.SlotId == "T2").IsConnected);
+        Assert.IsFalse(manager.Slots.First(s => s.SlotId == "T3").IsConnected);
     }
 }

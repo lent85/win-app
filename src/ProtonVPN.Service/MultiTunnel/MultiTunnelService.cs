@@ -13,6 +13,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ProtonVPN.Common.Core.Networking;
@@ -20,6 +22,7 @@ using ProtonVPN.Configurations.Contracts;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.SplitTunnelLogs;
 using ProtonVPN.OperatingSystems.Network.Contracts;
+using ProtonVPN.OperatingSystems.Network.Contracts.Routing;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.Service.Driver;
@@ -38,6 +41,9 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private readonly IConfiguration _config;
     private readonly IServiceSettings _serviceSettings;
     private readonly IMultiTunnelSlotRunner _slotRunner;
+    private readonly IRoutingTableHelper? _routingTableHelper;
+
+    public bool EnableBackgroundDnsResolution { get; set; } = true;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, TunnelSlotStateIpcEntity> _configuredSlotMeta = new(StringComparer.OrdinalIgnoreCase);
@@ -45,6 +51,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private bool _isEnabled;
     private bool _isPrimaryVpnConnected;
     private VpnProtocol _lastProtocol = VpnProtocol.WireGuardUdp;
+    private string? _lastAppliedFingerprint;
+    private CancellationTokenSource? _dnsResolveCts;
 
     public bool IsEnabled
     {
@@ -66,7 +74,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
         ISystemNetworkInterfaces networkInterfaces,
         IConfiguration config,
         IServiceSettings serviceSettings,
-        IMultiTunnelSlotRunner? slotRunner = null)
+        IMultiTunnelSlotRunner? slotRunner = null,
+        IRoutingTableHelper? routingTableHelper = null)
     {
         _logger = logger;
         _orchestrator = orchestrator;
@@ -77,6 +86,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
         _config = config;
         _serviceSettings = serviceSettings;
         _slotRunner = slotRunner!;
+        _routingTableHelper = routingTableHelper;
     }
 
     public void ApplyPolicy(MultiTunnelPolicyIpcEntity policy)
@@ -179,7 +189,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
             if (!_isEnabled)
             {
                 _logger.Info<SplitTunnelLog>("MultiTunnelService: Policy disabled; clearing MultiTunnel WFP filters.");
-                _wfpManager.Disable();
+                CancelBackgroundDnsResolution();
+                DisableWfpLocked();
                 return;
             }
 
@@ -187,10 +198,12 @@ public sealed class MultiTunnelService : IMultiTunnelService
             if (anyConnected)
             {
                 ReapplyWfpPolicySafe();
+                ScheduleDomainResolution(rules);
             }
             else
             {
-                _wfpManager.Disable();
+                CancelBackgroundDnsResolution();
+                DisableWfpLocked();
             }
         }
     }
@@ -227,6 +240,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
             if (_isEnabled)
             {
                 ReapplyWfpPolicySafe();
+                ScheduleDomainResolution(_orchestrator.GetPriorityRules());
             }
         }
     }
@@ -250,7 +264,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
             }
             else
             {
-                _wfpManager.Disable();
+                CancelBackgroundDnsResolution();
+                DisableWfpLocked();
             }
         }
     }
@@ -270,6 +285,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
                 if (_isEnabled)
                 {
                     ReapplyWfpPolicySafe();
+                    ScheduleDomainResolution(_orchestrator.GetPriorityRules());
                 }
             }
         }
@@ -293,7 +309,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
             }
             else
             {
-                _wfpManager.Disable();
+                CancelBackgroundDnsResolution();
+                DisableWfpLocked();
             }
         }
     }
@@ -327,7 +344,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
         lock (_lock)
         {
-            _wfpManager.Disable();
+            CancelBackgroundDnsResolution();
+            DisableWfpLocked();
         }
     }
 
@@ -411,32 +429,291 @@ public sealed class MultiTunnelService : IMultiTunnelService
     {
         try
         {
-            string excludedHardwareId = _config.GetHardwareId(_lastProtocol, _serviceSettings.OpenVpnAdapter);
-            IPAddress physicalIpv4 = _networkUtilities.GetBestInterfaceIPv4Address(excludedHardwareId);
+            IPAddress? physicalIpv4 = null;
+            IPAddress? physicalIpv6 = null;
+
+            if (MultiTunnelNetworkHelper.TryResolvePhysicalInterface(
+                    _networkInterfaces,
+                    _routingTableHelper,
+                    out _,
+                    out IPAddress? resolvedV4,
+                    out IPAddress? resolvedV6,
+                    out _,
+                    out _))
+            {
+                physicalIpv4 = resolvedV4;
+                physicalIpv6 = resolvedV6;
+            }
+            else
+            {
+                string excludedHardwareId = _config.GetHardwareId(_lastProtocol, _serviceSettings.OpenVpnAdapter);
+                IPAddress candidateIpv4 = _networkUtilities.GetBestInterfaceIPv4Address(excludedHardwareId);
+                if (!MultiTunnelNetworkHelper.IsTunnelSubnetIpv4(candidateIpv4))
+                {
+                    physicalIpv4 = candidateIpv4;
+                    INetworkInterface bestInterface = _networkInterfaces.GetBestInterfaceExcludingHardwareId(excludedHardwareId);
+                    physicalIpv6 = !string.IsNullOrEmpty(bestInterface?.Id)
+                        ? bestInterface.GetPreferredIpv6UnicastAddress()
+                        : null;
+                }
+            }
+
             if (physicalIpv4 is null || physicalIpv4.Equals(IPAddress.None) || physicalIpv4.Equals(IPAddress.Any))
             {
                 _logger.Warn<SplitTunnelLog>("MultiTunnelService: Physical IPv4 address unavailable; skipping WFP policy apply.");
                 return;
             }
 
-            INetworkInterface bestInterface = _networkInterfaces.GetBestInterfaceExcludingHardwareId(excludedHardwareId);
-            IPAddress? physicalIpv6 = !string.IsNullOrEmpty(bestInterface?.Id)
-                ? bestInterface.GetPreferredIpv6UnicastAddress()
-                : null;
-
-            _calloutDriver.Start();
-
             IReadOnlyDictionary<string, TunnelSlotRuntimeState> slots = _orchestrator.GetSlotStates();
             IReadOnlyList<SelectiveRoutingRule> rules = _orchestrator.GetPriorityRules();
             IReadOnlyDictionary<Guid, IReadOnlyList<IPAddress>> domainIps = _orchestrator.DnsRoutingTable.GetActiveAddressesByRule();
+            RuleTargetType defaultTargetType = _orchestrator.DefaultTargetType;
+            string defaultTunnelId = _orchestrator.DefaultTunnelId;
 
-            _wfpManager.ApplyMultiTunnelPolicy(slots, rules, domainIps, physicalIpv4, physicalIpv6);
-            _logger.Info<SplitTunnelLog>($"MultiTunnelService: Applied WFP policy ({rules.Count(r => r.IsEnabled)} active rules, physical IPv4 {physicalIpv4}).");
+            string fingerprint = BuildPolicyFingerprint(
+                slots,
+                rules,
+                domainIps,
+                physicalIpv4,
+                physicalIpv6,
+                defaultTargetType,
+                defaultTunnelId);
+
+            if (string.Equals(fingerprint, _lastAppliedFingerprint, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _calloutDriver.Start();
+            _wfpManager.ApplyMultiTunnelPolicy(
+                slots,
+                rules,
+                domainIps,
+                physicalIpv4,
+                physicalIpv6,
+                defaultTargetType,
+                defaultTunnelId);
+            _lastAppliedFingerprint = fingerprint;
+            _logger.Info<SplitTunnelLog>($"MultiTunnelService: Applied WFP policy ({rules.Count(r => r.IsEnabled)} active rules, physical IPv4 {physicalIpv4}, default {defaultTargetType}).");
         }
         catch (Exception ex)
         {
+            _lastAppliedFingerprint = null;
             _logger.Error<SplitTunnelLog>("MultiTunnelService: Failed to apply Multi-Tunnel WFP policy.", ex);
         }
+    }
+
+    private void DisableWfpLocked()
+    {
+        _lastAppliedFingerprint = null;
+        _wfpManager.Disable();
+    }
+
+    private void CancelBackgroundDnsResolution()
+    {
+        try
+        {
+            _dnsResolveCts?.Cancel();
+            _dnsResolveCts?.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _dnsResolveCts = null;
+        }
+    }
+
+    private void ScheduleDomainResolution(IReadOnlyList<SelectiveRoutingRule> rules)
+    {
+        if (!EnableBackgroundDnsResolution)
+        {
+            return;
+        }
+
+        List<SelectiveRoutingRule> domainRules = rules
+            .Where(r => r.IsEnabled && r.HasDomainCondition && !string.IsNullOrWhiteSpace(r.DomainPattern))
+            .OrderBy(r => r.PriorityOrder)
+            .ToList();
+
+        if (domainRules.Count == 0)
+        {
+            return;
+        }
+
+        CancelBackgroundDnsResolution();
+        CancellationTokenSource cts = new();
+        _dnsResolveCts = cts;
+        CancellationToken ct = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ResolveDomainRulesAsync(domainRules, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug<SplitTunnelLog>($"MultiTunnelService: Background domain resolution error: {ex.Message}");
+            }
+        }, ct);
+    }
+
+    private async Task ResolveDomainRulesAsync(IReadOnlyList<SelectiveRoutingRule> domainRules, CancellationToken ct)
+    {
+        List<string> candidates = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (SelectiveRoutingRule rule in domainRules)
+        {
+            foreach (string raw in (rule.DomainPattern ?? string.Empty).Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                string token = raw.Trim().ToLowerInvariant();
+                if (token.StartsWith("keyword:", StringComparison.Ordinal) || token == "*")
+                {
+                    continue;
+                }
+
+                if (token.StartsWith("*.", StringComparison.Ordinal))
+                {
+                    string baseHost = token[2..].Trim('.');
+                    if (!string.IsNullOrWhiteSpace(baseHost) && baseHost.Contains('.'))
+                    {
+                        if (seen.Add(baseHost))
+                        {
+                            candidates.Add(baseHost);
+                        }
+                        string wwwHost = "www." + baseHost;
+                        if (seen.Add(wwwHost))
+                        {
+                            candidates.Add(wwwHost);
+                        }
+                    }
+                }
+                else
+                {
+                    string host = token.Trim('.');
+                    if (!string.IsNullOrWhiteSpace(host) && host.Contains('.') && seen.Add(host))
+                    {
+                        candidates.Add(host);
+                    }
+                }
+
+                if (candidates.Count >= 64)
+                {
+                    break;
+                }
+            }
+
+            if (candidates.Count >= 64)
+            {
+                break;
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        bool anyRegistered = false;
+        foreach (string host in candidates)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(1500));
+                IPAddress[] addresses = await System.Net.Dns.GetHostAddressesAsync(host, timeoutCts.Token).ConfigureAwait(false);
+                if (addresses.Length == 0)
+                {
+                    continue;
+                }
+
+                RoutingDecision decision = _orchestrator.EvaluateTraffic(new TrafficQuery(Domain: host));
+                if (decision.MatchedRule is null)
+                {
+                    continue;
+                }
+
+                List<DnsResolvedRecord> records = addresses
+                    .Where(a => a.AddressFamily == AddressFamily.InterNetwork)
+                    .Select(a => new DnsResolvedRecord(a, 300))
+                    .ToList();
+
+                if (records.Count > 0)
+                {
+                    _orchestrator.DnsRoutingTable.RegisterResolvedAddresses(host, decision, records);
+                    anyRegistered = true;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        if (anyRegistered && !ct.IsCancellationRequested)
+        {
+            lock (_lock)
+            {
+                if (_isEnabled && _orchestrator.GetSlotStates().Values.Any(s => s.IsConnected))
+                {
+                    ReapplyWfpPolicySafe();
+                }
+            }
+        }
+    }
+
+    private static string BuildPolicyFingerprint(
+        IReadOnlyDictionary<string, TunnelSlotRuntimeState> slots,
+        IReadOnlyList<SelectiveRoutingRule> rules,
+        IReadOnlyDictionary<Guid, IReadOnlyList<IPAddress>> domainIps,
+        IPAddress physicalIpv4,
+        IPAddress? physicalIpv6,
+        RuleTargetType defaultTargetType,
+        string defaultTunnelId)
+    {
+        StringBuilder sb = new();
+        sb.Append(physicalIpv4).Append('|').Append(physicalIpv6?.ToString() ?? "").Append('|')
+          .Append(defaultTargetType).Append('|').Append(defaultTunnelId).Append(';');
+
+        foreach (TunnelSlotRuntimeState s in slots.Values.Where(x => x.IsConnected).OrderBy(x => x.SlotIndex))
+        {
+            sb.Append(s.SlotId).Append(':')
+              .Append(s.ClientIpv4).Append(':')
+              .Append(s.EntryIp).Append(':')
+              .Append(s.InterfaceIndex).Append(';');
+        }
+
+        foreach (SelectiveRoutingRule r in rules.Where(x => x.IsEnabled && x.HasAnyCondition).OrderBy(x => x.PriorityOrder))
+        {
+            sb.Append(r.Id).Append('#').Append(r.PriorityOrder).Append(':')
+              .Append(r.AppPattern).Append('|')
+              .Append(r.DomainPattern).Append('|')
+              .Append(r.IpCidrPattern).Append('|')
+              .Append(r.PortPattern).Append('|')
+              .Append(r.Protocol).Append('|')
+              .Append(r.TargetType).Append('|')
+              .Append(r.TargetTunnelId).Append('|')
+              .Append(r.FallbackBehavior).Append('|')
+              .Append(r.FallbackTunnelId);
+
+            if (domainIps.TryGetValue(r.Id, out IReadOnlyList<IPAddress>? ips) && ips.Count > 0)
+            {
+                sb.Append('{').Append(string.Join(",", ips.Select(i => i.ToString()).OrderBy(x => x, StringComparer.Ordinal))).Append('}');
+            }
+            sb.Append(';');
+        }
+
+        return sb.ToString();
     }
 
     private static SelectiveRoutingRule MapRuleFromIpc(SelectiveRoutingRuleIpcEntity src)

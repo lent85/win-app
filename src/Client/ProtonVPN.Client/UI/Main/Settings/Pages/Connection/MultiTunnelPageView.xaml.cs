@@ -106,4 +106,12 @@ public sealed partial class MultiTunnelPageView : IContextAware
             await ViewModel.DeleteRuleAsync(ruleId);
         }
     }
+
+    private void OnPresetCheckClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { Tag: string presetId } cb)
+        {
+            ViewModel.SetPresetSelected(presetId, cb.IsChecked == true);
+        }
+    }
 }

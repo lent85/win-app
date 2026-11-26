@@ -92,6 +92,11 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         get { lock (_lock) { return _config.Slots.Count(s => s.IsConnected); } }
     }
 
+    public bool IsAnySlotConnecting
+    {
+        get { lock (_lock) { return _config.Slots.Any(s => s.IsConnecting); } }
+    }
+
     public MultiTunnelManager(
         ILogger logger,
         ISettings settings,
@@ -463,6 +468,70 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         }
     }
 
+    public async Task ConnectAllSlotsAsync()
+    {
+        List<string> slotIds;
+        lock (_lock)
+        {
+            slotIds = _config.Slots
+                .OrderBy(s => s.SlotIndex)
+                .Select(s => s.SlotId)
+                .ToList();
+        }
+
+        foreach (string slotId in slotIds)
+        {
+            bool shouldConnect;
+            lock (_lock)
+            {
+                MultiTunnelSlotConfig? slot = _config.Slots.FirstOrDefault(s =>
+                    string.Equals(s.SlotId, slotId, StringComparison.OrdinalIgnoreCase));
+                shouldConnect = slot is not null &&
+                                !slot.IsConnected &&
+                                !slot.IsConnecting &&
+                                !string.IsNullOrWhiteSpace(slot.CountryCode);
+            }
+
+            if (shouldConnect)
+            {
+                await ConnectSlotAsync(slotId);
+            }
+        }
+    }
+
+    public async Task DisconnectAllSlotsAsync()
+    {
+        List<string> secondaryIds;
+        bool disconnectT1;
+        lock (_lock)
+        {
+            secondaryIds = _config.Slots
+                .Where(s => !string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase) && (s.IsConnected || s.IsConnecting))
+                .OrderByDescending(s => s.SlotIndex)
+                .Select(s => s.SlotId)
+                .ToList();
+
+            MultiTunnelSlotConfig? t1 = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase));
+            disconnectT1 = (t1 is not null && (t1.IsConnected || t1.IsConnecting)) ||
+                           _connectionManager.IsConnected ||
+                           _connectionManager.IsConnecting;
+        }
+
+        foreach (string slotId in secondaryIds)
+        {
+            await DisconnectSlotAsync(slotId);
+        }
+
+        if (disconnectT1)
+        {
+            await DisconnectSlotAsync("T1");
+        }
+
+        NotifyChanged();
+        await SyncPolicyToServiceAsync();
+    }
+
     public async Task<string> HandleMapCountryClickAsync(string countryCode)
     {
         if (string.IsNullOrWhiteSpace(countryCode))
@@ -547,6 +616,55 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
         NotifyChanged();
         await SyncPolicyToServiceAsync();
+    }
+
+    public async Task<int> ApplyRoutingPresetsAsync(
+        IEnumerable<RoutingRulePreset> presets,
+        RoutingPresetApplyMode mode,
+        RuleTargetTypeIpcEntity? targetTypeOverride = null,
+        string? targetTunnelIdOverride = null,
+        TunnelFallbackBehaviorIpcEntity? fallbackBehaviorOverride = null,
+        string? fallbackTunnelIdOverride = null)
+    {
+        List<RoutingRulePreset> presetList = presets?.Where(p => p is not null).ToList() ?? [];
+        if (presetList.Count == 0)
+        {
+            return 0;
+        }
+
+        int appliedCount;
+        lock (_lock)
+        {
+            List<string> availableSlotIds = _config.Slots
+                .OrderBy(s => s.SlotIndex)
+                .Select(s => s.SlotId)
+                .ToList();
+
+            List<MultiTunnelRuleConfig> generated = presetList
+                .Select(p => p.ToRuleConfig(
+                    availableSlotIds,
+                    targetTypeOverride,
+                    targetTunnelIdOverride,
+                    fallbackBehaviorOverride,
+                    fallbackTunnelIdOverride))
+                .ToList();
+
+            if (mode == RoutingPresetApplyMode.Replace)
+            {
+                _config.Rules = generated;
+            }
+            else
+            {
+                _config.Rules.InsertRange(0, generated);
+            }
+
+            appliedCount = generated.Count;
+            NormalizeAndPersistLocked();
+        }
+
+        NotifyChanged();
+        await SyncPolicyToServiceAsync();
+        return appliedCount;
     }
 
     public async Task UpdateRuleAsync(MultiTunnelRuleConfig rule)

@@ -32,6 +32,7 @@ using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Features;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Profiles.Contracts.Messages;
 using ProtonVPN.Client.Logic.Profiles.Contracts.Models;
 using ProtonVPN.Client.Logic.Recents.Contracts;
@@ -54,11 +55,13 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
     IEventMessageReceiver<ProfilesChangedMessage>,
     IEventMessageReceiver<SettingChangedMessage>,
     IEventMessageReceiver<ServerListChangedMessage>,
-    IEventMessageReceiver<LocationNamesChangedMessage>
+    IEventMessageReceiver<LocationNamesChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private const int FREE_COUNTRIES_DISPLAYED_AS_FLAGS = 3;
 
     private readonly IConnectionManager _connectionManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
     private readonly ISettings _settings;
     private readonly IRecentConnectionsManager _recentConnectionsManager;
     private readonly IMainWindowOverlayActivator _mainWindowOverlayActivator;
@@ -152,11 +155,35 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
 
     public bool HasSubtitleOrFeature => HasSubtitle || IsTor || IsP2P;
 
-    public bool IsDisconnected => CurrentConnectionStatus == ConnectionStatus.Disconnected;
+    public bool IsMultiTunnelEnabled => _multiTunnelManager.IsEnabled;
 
-    public bool IsConnecting => CurrentConnectionStatus == ConnectionStatus.Connecting;
+    public bool IsDisconnected => IsMultiTunnelEnabled
+        ? CurrentConnectionStatus == ConnectionStatus.Disconnected &&
+          _multiTunnelManager.ConnectedSlotCount == 0 &&
+          !_multiTunnelManager.IsAnySlotConnecting
+        : CurrentConnectionStatus == ConnectionStatus.Disconnected;
 
-    public bool IsConnected => CurrentConnectionStatus == ConnectionStatus.Connected;
+    public bool IsConnecting => IsMultiTunnelEnabled
+        ? (CurrentConnectionStatus == ConnectionStatus.Connecting || _multiTunnelManager.IsAnySlotConnecting) &&
+          _multiTunnelManager.ConnectedSlotCount == 0 &&
+          CurrentConnectionStatus != ConnectionStatus.Connected
+        : CurrentConnectionStatus == ConnectionStatus.Connecting;
+
+    public bool IsConnected => IsMultiTunnelEnabled
+        ? CurrentConnectionStatus == ConnectionStatus.Connected || _multiTunnelManager.ConnectedSlotCount > 0
+        : CurrentConnectionStatus == ConnectionStatus.Connected;
+
+    public string ConnectButtonText => IsMultiTunnelEnabled
+        ? "Connect All"
+        : Localizer.Get("Common_Actions_Connect");
+
+    public string DisconnectButtonText => IsMultiTunnelEnabled
+        ? "Disconnect All"
+        : Localizer.Get("Common_Actions_Disconnect");
+
+    public string CancelButtonText => IsMultiTunnelEnabled
+        ? "Cancel All"
+        : Localizer.Get("Common_Actions_Cancel");
 
     public bool IsFreeUser => !_settings.VpnPlan.IsPaid;
 
@@ -217,6 +244,7 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
     public ConnectionCardComponentViewModel(
         IViewModelHelper viewModelHelper,
         IConnectionManager connectionManager,
+        IMultiTunnelManager multiTunnelManager,
         ISettings settings,
         IRecentConnectionsManager recentConnectionsManager,
         IMainWindowOverlayActivator mainWindowOverlayActivator,
@@ -224,6 +252,7 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
         : base(viewModelHelper)
     {
         _connectionManager = connectionManager;
+        _multiTunnelManager = multiTunnelManager;
         _settings = settings;
         _recentConnectionsManager = recentConnectionsManager;
         _mainWindowOverlayActivator = mainWindowOverlayActivator;
@@ -302,6 +331,11 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
         }
     }
 
+    public void Receive(MultiTunnelPolicyChangedMessage message)
+    {
+        ExecuteOnUIThread(InvalidateMultiTunnelState);
+    }
+
     protected override void OnActivated()
     {
         base.OnActivated();
@@ -311,6 +345,7 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
         InvalidateConnectionDetails();
         InvalidateFreeCountriesCount();
         InvalidateVpnPlan();
+        InvalidateMultiTunnelState();
     }
 
     protected override void OnLanguageChanged()
@@ -320,12 +355,17 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Subtitle));
         OnPropertyChanged(nameof(SmartRoutingLabel));
+        OnPropertyChanged(nameof(ConnectButtonText));
+        OnPropertyChanged(nameof(DisconnectButtonText));
+        OnPropertyChanged(nameof(CancelButtonText));
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private Task ConnectAsync()
     {
-        return _connectionManager.ConnectAsync(VpnTriggerDimension.ConnectionCard, CurrentConnectionIntent);
+        return IsMultiTunnelEnabled
+            ? _multiTunnelManager.ConnectAllSlotsAsync()
+            : _connectionManager.ConnectAsync(VpnTriggerDimension.ConnectionCard, CurrentConnectionIntent);
     }
 
     private bool CanConnect()
@@ -336,7 +376,14 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
     [RelayCommand(CanExecute = nameof(CanCancelConnection))]
     private async Task CancelConnectionAsync()
     {
-        await _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+        if (IsMultiTunnelEnabled)
+        {
+            await _multiTunnelManager.DisconnectAllSlotsAsync();
+        }
+        else
+        {
+            await _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+        }
     }
 
     private bool CanCancelConnection()
@@ -347,7 +394,27 @@ public partial class ConnectionCardComponentViewModel : ActivatableViewModelBase
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     private Task DisconnectAsync()
     {
-        return _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+        return IsMultiTunnelEnabled
+            ? _multiTunnelManager.DisconnectAllSlotsAsync()
+            : _connectionManager.DisconnectAsync(VpnTriggerDimension.ConnectionCard);
+    }
+
+    private void InvalidateMultiTunnelState()
+    {
+        OnPropertyChanged(nameof(IsMultiTunnelEnabled));
+        OnPropertyChanged(nameof(IsDisconnected));
+        OnPropertyChanged(nameof(IsConnecting));
+        OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(ConnectButtonText));
+        OnPropertyChanged(nameof(DisconnectButtonText));
+        OnPropertyChanged(nameof(CancelButtonText));
+        OnPropertyChanged(nameof(IsFreeConnectionsTaglineVisible));
+        OnPropertyChanged(nameof(IsChangeServerOptionVisible));
+        OnPropertyChanged(nameof(IsChangeDefaultConnectionOptionVisible));
+        ConnectCommand.NotifyCanExecuteChanged();
+        CancelConnectionCommand.NotifyCanExecuteChanged();
+        DisconnectCommand.NotifyCanExecuteChanged();
+        ShowFreeConnectionsOverlayCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanDisconnect()

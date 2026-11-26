@@ -73,13 +73,54 @@ public sealed class MultiTunnelRuleItem
     public required string CriteriaSummary { get; init; }
 }
 
+public partial class MultiTunnelPresetItem : ObservableObject
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Category { get; init; }
+    public required string Description { get; init; }
+    public required string ConditionPreview { get; init; }
+    public required string RecommendedTargetLabel { get; init; }
+
+    [ObservableProperty]
+    private bool _isSelected;
+}
+
 public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     IEventMessageReceiver<MultiTunnelPolicyChangedMessage>,
     IEventMessageReceiver<ServerListChangedMessage>
 {
     private readonly IMultiTunnelManager _multiTunnelManager;
     private readonly IServersLoader _serversLoader;
+    private readonly List<MultiTunnelPresetItem> _allPresets = [];
     private bool _isRefreshing;
+
+    [ObservableProperty]
+    private string? _selectedPresetCategory = "All";
+
+    [ObservableProperty]
+    private string _presetSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    private string? _selectedPresetTargetType = "Preset Default";
+
+    [ObservableProperty]
+    private string? _selectedPresetTunnelId = "T1";
+
+    [ObservableProperty]
+    private string? _selectedPresetFallbackBehavior = "Preset Default";
+
+    [ObservableProperty]
+    private string? _selectedPresetFallbackTunnelId = "T1";
+
+    [ObservableProperty]
+    private string _presetStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedPresetCountText = "0 selected";
+
+    [ObservableProperty]
+    private bool _hasSelectedPresets;
 
     [ObservableProperty]
     private bool _isMultiTunnelEnabled;
@@ -177,11 +218,25 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public bool IsRuleFallbackTunnel => IsRuleTargetTunnel &&
                                         string.Equals(RuleFallbackBehavior, "FallbackToTunnel", StringComparison.OrdinalIgnoreCase);
 
+    public bool IsPresetTargetTunnel => string.Equals(SelectedPresetTargetType, "Tunnel", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsPresetFallbackAllowed =>
+        !string.Equals(SelectedPresetTargetType, "Direct", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(SelectedPresetTargetType, "Block", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsPresetFallbackTunnel => IsPresetFallbackAllowed &&
+                                          string.Equals(SelectedPresetFallbackBehavior, "FallbackToTunnel", StringComparison.OrdinalIgnoreCase);
+
+    public bool HasPresetStatus => !string.IsNullOrWhiteSpace(PresetStatusText);
+
     public bool CanAddSlot => Slots.Count < MultiTunnelSlotConfig.MaxSlots;
 
     public IReadOnlyList<string> TargetTypeOptions { get; } = ["Direct", "Tunnel", "Block"];
     public IReadOnlyList<string> ProtocolOptions { get; } = ["Any", "Tcp", "Udp"];
     public IReadOnlyList<string> FallbackOptions { get; } = ["KillSwitchBlock", "FallbackToTunnel", "FallbackToDirect"];
+    public IReadOnlyList<string> PresetCategoryOptions { get; } = ["All", "BigTech", "Social", "AiDev", "MediaGaming", "Network"];
+    public IReadOnlyList<string> PresetTargetTypeOptions { get; } = ["Preset Default", "Direct", "Tunnel", "Block"];
+    public IReadOnlyList<string> PresetFallbackOptions { get; } = ["Preset Default", "KillSwitchBlock", "FallbackToTunnel", "FallbackToDirect"];
 
     public ObservableCollection<string> SlotIdOptions { get; } = ["T1", "T2", "T3", "T4", "T5"];
     public ObservableCollection<string> SlotPickerTargets { get; } = ["NEW", "T1"];
@@ -189,6 +244,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public ObservableCollection<SlotServerOption> AvailableServers { get; } = [];
     public ObservableCollection<MultiTunnelSlotItem> Slots { get; } = [];
     public ObservableCollection<MultiTunnelRuleItem> Rules { get; } = [];
+    public ObservableCollection<MultiTunnelPresetItem> FilteredPresets { get; } = [];
     public ObservableCollection<string> ConflictMessages { get; } = [];
 
     public MultiTunnelPageViewModel(
@@ -215,6 +271,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         _serversLoader = serversLoader;
 
         PageSettings = [];
+        InitializePresets();
     }
 
     protected override void OnActivated()
@@ -280,6 +337,211 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     partial void OnRuleFallbackBehaviorChanged(string? value)
     {
         OnPropertyChanged(nameof(IsRuleFallbackTunnel));
+    }
+
+    partial void OnSelectedPresetCategoryChanged(string? value)
+    {
+        RefreshFilteredPresets();
+    }
+
+    partial void OnPresetSearchQueryChanged(string value)
+    {
+        RefreshFilteredPresets();
+    }
+
+    partial void OnSelectedPresetTargetTypeChanged(string? value)
+    {
+        OnPropertyChanged(nameof(IsPresetTargetTunnel));
+        OnPropertyChanged(nameof(IsPresetFallbackAllowed));
+        OnPropertyChanged(nameof(IsPresetFallbackTunnel));
+    }
+
+    partial void OnSelectedPresetFallbackBehaviorChanged(string? value)
+    {
+        OnPropertyChanged(nameof(IsPresetFallbackTunnel));
+    }
+
+    partial void OnPresetStatusTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPresetStatus));
+    }
+
+    public void SetPresetSelected(string presetId, bool isSelected)
+    {
+        MultiTunnelPresetItem? item = _allPresets.FirstOrDefault(p =>
+            string.Equals(p.Id, presetId, StringComparison.OrdinalIgnoreCase));
+        if (item is not null)
+        {
+            item.IsSelected = isSelected;
+            UpdatePresetSelectionState();
+        }
+    }
+
+    [RelayCommand]
+    public void SelectAllVisiblePresets()
+    {
+        foreach (MultiTunnelPresetItem item in FilteredPresets)
+        {
+            item.IsSelected = true;
+        }
+        UpdatePresetSelectionState();
+    }
+
+    [RelayCommand]
+    public void ClearSelectedPresets()
+    {
+        foreach (MultiTunnelPresetItem item in _allPresets)
+        {
+            item.IsSelected = false;
+        }
+        UpdatePresetSelectionState();
+    }
+
+    [RelayCommand]
+    public Task AddSelectedPresetsAsync() => ApplySelectedPresetsAsync(RoutingPresetApplyMode.Add);
+
+    [RelayCommand]
+    public Task ReplaceWithSelectedPresetsAsync() => ApplySelectedPresetsAsync(RoutingPresetApplyMode.Replace);
+
+    [RelayCommand]
+    public void FillEditorFromSelectedPreset()
+    {
+        MultiTunnelPresetItem? selectedItem = _allPresets.FirstOrDefault(p => p.IsSelected) ?? FilteredPresets.FirstOrDefault();
+        RoutingRulePreset? preset = MultiTunnelRoutingPresetCatalog.FindById(selectedItem?.Id);
+        if (preset is null)
+        {
+            PresetStatusText = "Select a preset template first.";
+            return;
+        }
+
+        IReadOnlyCollection<string> slotIds = _multiTunnelManager.Slots.Count > 0
+            ? _multiTunnelManager.Slots.Select(s => s.SlotId).ToList()
+            : ["T1"];
+        (RuleTargetTypeIpcEntity? targetTypeOverride, string? targetTunnelOverride, TunnelFallbackBehaviorIpcEntity? fbOverride, string? fbTunnelOverride) = ParsePresetOverrides();
+        MultiTunnelRuleConfig draft = preset.ToRuleConfig(slotIds, targetTypeOverride, targetTunnelOverride, fbOverride, fbTunnelOverride);
+
+        EditingRuleId = null;
+        RuleEditorTitle = $"New Rule from Template: {preset.Name}";
+        RuleName = draft.Name;
+        RuleAppPattern = draft.AppPattern ?? string.Empty;
+        RuleDomainPattern = draft.DomainPattern ?? string.Empty;
+        RuleIpCidrPattern = draft.IpCidrPattern ?? string.Empty;
+        RulePortPattern = draft.PortPattern ?? string.Empty;
+        RuleProtocol = draft.Protocol.ToString();
+        RuleTargetType = draft.TargetType.ToString();
+        RuleTargetTunnelId = draft.TargetTunnelId;
+        RuleFallbackBehavior = draft.FallbackBehavior.ToString();
+        RuleFallbackTunnelId = string.IsNullOrWhiteSpace(draft.FallbackTunnelId) ? "T1" : draft.FallbackTunnelId;
+        PresetStatusText = $"Loaded '{preset.Name}' into the rule editor below.";
+    }
+
+    private async Task ApplySelectedPresetsAsync(RoutingPresetApplyMode mode)
+    {
+        List<RoutingRulePreset> selected = _allPresets
+            .Where(i => i.IsSelected)
+            .Select(i => MultiTunnelRoutingPresetCatalog.FindById(i.Id))
+            .Where(p => p is not null)
+            .Cast<RoutingRulePreset>()
+            .ToList();
+
+        if (selected.Count == 0)
+        {
+            PresetStatusText = "Select one or more service templates first.";
+            return;
+        }
+
+        (RuleTargetTypeIpcEntity? targetTypeOverride, string? targetTunnelOverride, TunnelFallbackBehaviorIpcEntity? fbOverride, string? fbTunnelOverride) = ParsePresetOverrides();
+        int applied = await _multiTunnelManager.ApplyRoutingPresetsAsync(
+            selected,
+            mode,
+            targetTypeOverride,
+            targetTunnelOverride,
+            fbOverride,
+            fbTunnelOverride);
+
+        PresetStatusText = mode == RoutingPresetApplyMode.Replace
+            ? $"Replaced routing rules with {applied} template rule(s)."
+            : $"Added {applied} template rule(s) to the top of the priority list.";
+        ClearSelectedPresets();
+    }
+
+    private (RuleTargetTypeIpcEntity? TargetType, string? TargetTunnelId, TunnelFallbackBehaviorIpcEntity? Fallback, string? FallbackTunnelId) ParsePresetOverrides()
+    {
+        RuleTargetTypeIpcEntity? targetType = null;
+        string? targetTunnelId = null;
+        TunnelFallbackBehaviorIpcEntity? fallbackBehavior = null;
+        string? fallbackTunnelId = null;
+
+        if (!string.Equals(SelectedPresetTargetType, "Preset Default", StringComparison.OrdinalIgnoreCase) &&
+            Enum.TryParse(SelectedPresetTargetType, out RuleTargetTypeIpcEntity parsedTarget))
+        {
+            targetType = parsedTarget;
+            if (parsedTarget == RuleTargetTypeIpcEntity.Tunnel)
+            {
+                targetTunnelId = string.IsNullOrWhiteSpace(SelectedPresetTunnelId) ? "T1" : SelectedPresetTunnelId;
+            }
+        }
+
+        if ((!targetType.HasValue || targetType == RuleTargetTypeIpcEntity.Tunnel) &&
+            !string.Equals(SelectedPresetFallbackBehavior, "Preset Default", StringComparison.OrdinalIgnoreCase) &&
+            Enum.TryParse(SelectedPresetFallbackBehavior, out TunnelFallbackBehaviorIpcEntity parsedFb))
+        {
+            fallbackBehavior = parsedFb;
+            if (parsedFb == TunnelFallbackBehaviorIpcEntity.FallbackToTunnel)
+            {
+                fallbackTunnelId = string.IsNullOrWhiteSpace(SelectedPresetFallbackTunnelId) ? "T1" : SelectedPresetFallbackTunnelId;
+            }
+        }
+
+        return (targetType, targetTunnelId, fallbackBehavior, fallbackTunnelId);
+    }
+
+    private void InitializePresets()
+    {
+        _allPresets.Clear();
+        foreach (RoutingRulePreset preset in MultiTunnelRoutingPresetCatalog.All)
+        {
+            _allPresets.Add(new MultiTunnelPresetItem
+            {
+                Id = preset.Id,
+                Name = preset.Name,
+                Category = preset.Category,
+                Description = preset.Description,
+                ConditionPreview = preset.ConditionPreview,
+                RecommendedTargetLabel = preset.RecommendedTargetLabel,
+            });
+        }
+        RefreshFilteredPresets();
+        UpdatePresetSelectionState();
+    }
+
+    private void RefreshFilteredPresets()
+    {
+        FilteredPresets.Clear();
+        foreach (MultiTunnelPresetItem item in _allPresets)
+        {
+            RoutingRulePreset? preset = MultiTunnelRoutingPresetCatalog.FindById(item.Id);
+            if (preset is null)
+            {
+                continue;
+            }
+
+            bool categoryMatch = string.IsNullOrWhiteSpace(SelectedPresetCategory) ||
+                                 string.Equals(SelectedPresetCategory, "All", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(item.Category, SelectedPresetCategory, StringComparison.OrdinalIgnoreCase);
+
+            if (categoryMatch && preset.MatchesSearch(PresetSearchQuery))
+            {
+                FilteredPresets.Add(item);
+            }
+        }
+    }
+
+    private void UpdatePresetSelectionState()
+    {
+        int count = _allPresets.Count(p => p.IsSelected);
+        HasSelectedPresets = count > 0;
+        SelectedPresetCountText = $"{count} selected";
     }
 
     [RelayCommand]
