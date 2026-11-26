@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,6 +17,7 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System;
 using Mapsui;
 using Mapsui.Extensions;
 using Mapsui.Layers;
@@ -34,6 +35,9 @@ namespace ProtonVPN.Client.Common.UI.Controls.Map;
 
 public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
 {
+    private static readonly SKTypeface _badgeTypeface =
+        SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) ?? SKTypeface.Default;
+
     public ElementTheme ElementTheme { get; set; }
 
     private string GreenColor => ElementTheme == ElementTheme.Dark
@@ -70,13 +74,17 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
 
         MPoint screenPos = viewport.WorldToScreen(point.ToMPoint());
 
-        double layerOpacity = feature.IsCurrentCountry() || feature.IsConnecting()
+        double layerOpacity = feature.IsCurrentCountry() ||
+                              feature.IsConnecting() ||
+                              feature.IsMultiTunnelConnected() ||
+                              feature.IsMultiTunnelConnecting()
             ? 1
             : layer.Opacity;
 
         DrawTransparentCircle(canvas, animatedCircleStyle, screenPos, feature, layerOpacity);
         DrawNeutralCircle(canvas, animatedCircleStyle, screenPos, feature, layerOpacity);
         DrawCenterCircle(canvas, animatedCircleStyle, screenPos, feature, layerOpacity);
+        DrawSlotBadge(canvas, animatedCircleStyle, screenPos, feature, layerOpacity);
 
         return true;
     }
@@ -88,11 +96,21 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         IFeature feature,
         double layerOpacity)
     {
-        if (feature.IsCurrentCountry() && !feature.IsOnHover())
+        if ((feature.IsCurrentCountry() || feature.IsMultiTunnelConnected()) && !feature.IsOnHover())
         {
-            SKColor baseColor = SKColor.Parse(feature.IsConnected()
-                ? GreenColor
-                : RedColor);
+            SKColor baseColor;
+            if (feature.IsCurrentCountry() && feature.IsConnected())
+            {
+                baseColor = SKColor.Parse(GreenColor);
+            }
+            else if (feature.IsMultiTunnelConnected())
+            {
+                baseColor = ParseColorOrDefault(feature.GetMultiTunnelColorHex(), GreenColor);
+            }
+            else
+            {
+                baseColor = SKColor.Parse(RedColor);
+            }
 
             SKColor centerColor = baseColor.WithAlpha(0);
             SKColor edgeColor = baseColor.WithAlpha(255);
@@ -147,12 +165,6 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         IFeature feature,
         double layerOpacity)
     {
-        SKColor color = ElementTheme == ElementTheme.Dark
-            ? SKColors.White
-            : feature.IsCurrentCountry()
-                ? SKColors.White
-                : SKColor.Parse("#BCBCC3");
-
         using SKPaint middlePaint = new()
         {
             IsAntialias = true,
@@ -179,9 +191,85 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         }
     }
 
+    private void DrawSlotBadge(
+        SKCanvas canvas,
+        AnimatedCircleStyle style,
+        MPoint screenPos,
+        IFeature feature,
+        double layerOpacity)
+    {
+        string? label = feature.GetMultiTunnelLabel();
+        if (string.IsNullOrWhiteSpace(label) ||
+            feature.IsOnHover() ||
+            (!feature.IsConnected() && !feature.IsMultiTunnelConnected() && !feature.IsMultiTunnelConnecting()))
+        {
+            return;
+        }
+
+        byte alpha = (byte)(layerOpacity * 255);
+        SKColor accentColor = feature.IsConnected()
+            ? SKColor.Parse(GreenColor)
+            : ParseColorOrDefault(feature.GetMultiTunnelColorHex(), GreenColor);
+
+        SKColor backgroundColor = (ElementTheme == ElementTheme.Dark
+            ? SKColor.Parse("#D9181523")
+            : SKColor.Parse("#EBFFFFFF")).WithAlpha((byte)(layerOpacity * (ElementTheme == ElementTheme.Dark ? 217 : 235)));
+        SKColor textColor = (ElementTheme == ElementTheme.Dark
+            ? SKColors.White
+            : SKColor.Parse("#1F1D2B")).WithAlpha(alpha);
+
+        using SKPaint textPaint = new()
+        {
+            IsAntialias = true,
+            Color = textColor,
+            TextSize = 10.5f,
+            Typeface = _badgeTypeface,
+            TextAlign = SKTextAlign.Center,
+        };
+
+        float textWidth = textPaint.MeasureText(label);
+        SKFontMetrics metrics = textPaint.FontMetrics;
+        float textHeight = metrics.Descent - metrics.Ascent;
+
+        const float horizontalPadding = 6f;
+        const float verticalPadding = 2.5f;
+        const float cornerRadius = 6f;
+
+        float pillWidth = textWidth + horizontalPadding * 2;
+        float pillHeight = textHeight + verticalPadding * 2;
+        float pillLeft = (float)screenPos.X - pillWidth / 2f;
+        float pillTop = (float)screenPos.Y + Math.Max(style.NeutralCircleRadius, 8f) + 6f;
+
+        SKRect pillRect = new(pillLeft, pillTop, pillLeft + pillWidth, pillTop + pillHeight);
+
+        using SKPaint fillPaint = new()
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill,
+            Color = backgroundColor,
+        };
+        canvas.DrawRoundRect(pillRect, cornerRadius, cornerRadius, fillPaint);
+
+        using SKPaint borderPaint = new()
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1.2f,
+            Color = accentColor.WithAlpha(alpha),
+        };
+        canvas.DrawRoundRect(pillRect, cornerRadius, cornerRadius, borderPaint);
+
+        float textBaselineY = pillTop + verticalPadding - metrics.Ascent;
+        canvas.DrawText(label, (float)screenPos.X, textBaselineY, textPaint);
+    }
+
     private SKColor GetNeutralCircleColor(IFeature feature, double layerOpacity)
     {
-        bool isHighlighted = feature.IsOnHover() || feature.IsCurrentCountry() || ElementTheme == ElementTheme.Dark;
+        bool isHighlighted = feature.IsOnHover() ||
+                             feature.IsCurrentCountry() ||
+                             feature.IsMultiTunnelConnected() ||
+                             feature.IsMultiTunnelConnecting() ||
+                             ElementTheme == ElementTheme.Dark;
         SKColor baseColor = isHighlighted ? SKColors.White : SKColor.Parse("#898990");
         return baseColor.WithAlpha((byte)(layerOpacity * 255));
     }
@@ -198,6 +286,14 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         {
             color = SKColor.Parse(GreenColor);
         }
+        else if (feature.IsMultiTunnelConnected())
+        {
+            color = ParseColorOrDefault(feature.GetMultiTunnelColorHex(), GreenColor);
+        }
+        else if (feature.IsMultiTunnelConnecting())
+        {
+            color = ParseColorOrDefault(feature.GetMultiTunnelColorHex(), "#6E6B79");
+        }
         else if (feature.IsConnecting())
         {
             color = SKColor.Parse("#6E6B79");
@@ -208,5 +304,15 @@ public class AnimatedCirclesStyleSkiaRenderer : ISkiaStyleRenderer
         }
 
         return color.WithAlpha((byte)(layerOpacity * 255));
+    }
+
+    private static SKColor ParseColorOrDefault(string? colorHex, string fallbackHex)
+    {
+        if (!string.IsNullOrWhiteSpace(colorHex) && SKColor.TryParse(colorHex, out SKColor parsed))
+        {
+            return parsed;
+        }
+
+        return SKColor.Parse(fallbackHex);
     }
 }

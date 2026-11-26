@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -33,6 +33,10 @@ public static class FeatureExtensions
     private const string IS_CURRENT_COUNRY = "IsCurrentCountry";
     private const string COUNTRY_CODE = "CountryCode";
     private const string IS_UNDER_MAINTENANCE = "IsUnderMaintenance";
+    private const string IS_MULTI_TUNNEL_CONNECTED = "IsMultiTunnelConnected";
+    private const string IS_MULTI_TUNNEL_CONNECTING = "IsMultiTunnelConnecting";
+    private const string MULTI_TUNNEL_COLOR_HEX = "MultiTunnelColorHex";
+    private const string MULTI_TUNNEL_LABEL = "MultiTunnelLabel";
 
     public static bool IsConnecting(this IFeature feature)
     {
@@ -122,13 +126,53 @@ public static class FeatureExtensions
         }
     }
 
+    public static bool IsMultiTunnelConnected(this IFeature feature)
+    {
+        return feature[IS_MULTI_TUNNEL_CONNECTED] as string == TRUE_STRING;
+    }
+
+    public static void SetIsMultiTunnelConnected(this IFeature feature, bool isConnected)
+    {
+        feature[IS_MULTI_TUNNEL_CONNECTED] = isConnected ? TRUE_STRING : null;
+    }
+
+    public static bool IsMultiTunnelConnecting(this IFeature feature)
+    {
+        return feature[IS_MULTI_TUNNEL_CONNECTING] as string == TRUE_STRING;
+    }
+
+    public static void SetIsMultiTunnelConnecting(this IFeature feature, bool isConnecting)
+    {
+        feature[IS_MULTI_TUNNEL_CONNECTING] = isConnecting ? TRUE_STRING : null;
+    }
+
+    public static string? GetMultiTunnelColorHex(this IFeature feature)
+    {
+        return feature[MULTI_TUNNEL_COLOR_HEX] as string;
+    }
+
+    public static void SetMultiTunnelColorHex(this IFeature feature, string? colorHex)
+    {
+        feature[MULTI_TUNNEL_COLOR_HEX] = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
+    }
+
+    public static string? GetMultiTunnelLabel(this IFeature feature)
+    {
+        return feature[MULTI_TUNNEL_LABEL] as string;
+    }
+
+    public static void SetMultiTunnelLabel(this IFeature feature, string? label)
+    {
+        feature[MULTI_TUNNEL_LABEL] = string.IsNullOrWhiteSpace(label) ? null : label;
+    }
+
     public static PinAnimationType? GetHoverLostAnimationType(this IFeature feature)
     {
-        if (feature.IsConnected())
+        if (feature.IsConnected() || feature.IsMultiTunnelConnected())
         {
             return PinAnimationType.OnHoverToConnected;
         }
-        else if (feature.IsConnecting())
+        else if (feature.IsConnecting() || feature.IsMultiTunnelConnecting())
         {
             return null;
         }
@@ -142,7 +186,7 @@ public static class FeatureExtensions
 
     public static PinAnimationType GetOnHoverAnimationType(this IFeature feature)
     {
-        if (feature.IsConnected())
+        if (feature.IsConnected() || feature.IsMultiTunnelConnected())
         {
             return PinAnimationType.ConnectedToOnHover;
         }

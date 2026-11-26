@@ -45,7 +45,8 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
     IEventMessageReceiver<ConnectionStatusChangedMessage>,
     IEventMessageReceiver<SettingChangedMessage>,
     IEventMessageReceiver<MainWindowVisibilityChangedMessage>,
-    IEventMessageReceiver<ServerListChangedMessage>
+    IEventMessageReceiver<ServerListChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private readonly ISettings _settings;
     private readonly IServersCache _serversCache;
@@ -63,6 +64,9 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
 
     [ObservableProperty]
     private Country? _currentCountry;
+
+    [ObservableProperty]
+    private List<MultiTunnelMapPin> _multiTunnelPins = [];
 
     public bool IsConnecting => _connectionManager.IsConnecting;
     public bool IsConnected => _connectionManager.IsConnected;
@@ -94,6 +98,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
 
         InvalidateCountries();
         InvalidateActiveCountry();
+        InvalidateMultiTunnelPins();
     }
 
     public void Receive(ConnectionStatusChangedMessage message)
@@ -101,6 +106,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
         ExecuteOnUIThreadIfActive(() =>
         {
             InvalidateActiveCountry();
+            InvalidateMultiTunnelPins();
 
             OnPropertyChanged(nameof(IsConnecting));
             OnPropertyChanged(nameof(IsConnected));
@@ -130,7 +136,13 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
         {
             InvalidateCountries();
             InvalidateActiveCountry();
+            InvalidateMultiTunnelPins();
         });
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
+    {
+        ExecuteOnUIThreadIfActive(InvalidateMultiTunnelPins);
     }
 
     protected override void OnLanguageChanged()
@@ -141,6 +153,7 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
 
             InvalidateCountries();
             InvalidateActiveCountry();
+            InvalidateMultiTunnelPins();
         });
     }
 
@@ -161,6 +174,80 @@ public partial class MapComponentViewModel : ActivatableViewModelBase,
             case ConnectionStatus.Disconnected:
                 CurrentCountry = Countries.FirstOrDefault(c => c.Code == _settings.DeviceLocation?.CountryCode);
                 break;
+        }
+    }
+
+    private void InvalidateMultiTunnelPins()
+    {
+        if (!_multiTunnelManager.IsEnabled)
+        {
+            if (MultiTunnelPins.Count > 0)
+            {
+                MultiTunnelPins = [];
+            }
+
+            return;
+        }
+
+        List<(int SlotIndex, string SlotId, string CountryCode, bool IsConnected, bool IsConnecting)> activeSlots = [];
+
+        foreach (MultiTunnelSlotConfig slot in _multiTunnelManager.Slots.OrderBy(s => s.SlotIndex))
+        {
+            bool isT1 = string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase);
+            bool isConnected = isT1
+                ? slot.IsConnected || _connectionManager.IsConnected
+                : slot.IsConnected;
+            bool isConnecting = isT1
+                ? !isConnected && (slot.IsConnecting || _connectionManager.IsConnecting)
+                : !isConnected && slot.IsConnecting;
+
+            if (!isConnected && !isConnecting)
+            {
+                continue;
+            }
+
+            string? countryCode = isT1 && !string.IsNullOrWhiteSpace(_connectionManager.CurrentConnectionDetails?.ExitCountryCode)
+                ? _connectionManager.CurrentConnectionDetails.ExitCountryCode
+                : slot.CountryCode;
+
+            if (string.IsNullOrWhiteSpace(countryCode))
+            {
+                continue;
+            }
+
+            activeSlots.Add((
+                slot.SlotIndex,
+                slot.SlotId.ToUpperInvariant(),
+                countryCode.Trim().ToUpperInvariant(),
+                isConnected,
+                isConnecting));
+        }
+
+        List<MultiTunnelMapPin> pins = activeSlots
+            .GroupBy(s => s.CountryCode, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var representative = group
+                    .OrderByDescending(s => s.IsConnected)
+                    .ThenBy(s => s.SlotIndex)
+                    .First();
+                string slotLabel = string.Join(" · ", group.OrderBy(s => s.SlotIndex).Select(s => s.SlotId));
+                bool isConnected = group.Any(s => s.IsConnected);
+                bool isConnecting = !isConnected && group.Any(s => s.IsConnecting);
+
+                return new MultiTunnelMapPin(
+                    representative.CountryCode,
+                    slotLabel,
+                    MultiTunnelSlotConfig.GetSlotColorHex(representative.SlotId),
+                    isConnected,
+                    isConnecting);
+            })
+            .OrderBy(p => p.CountryCode, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!MultiTunnelPins.SequenceEqual(pins))
+        {
+            MultiTunnelPins = pins;
         }
     }
 

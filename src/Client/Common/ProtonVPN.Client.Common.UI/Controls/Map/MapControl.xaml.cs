@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -144,6 +144,12 @@ public sealed partial class MapControl
         typeof(MapControl),
         new PropertyMetadata(default, OnConnectPhraseChanged));
 
+    public static readonly DependencyProperty MultiTunnelPinsProperty = DependencyProperty.Register(
+        nameof(MultiTunnelPins),
+        typeof(List<MultiTunnelMapPin>),
+        typeof(MapControl),
+        new PropertyMetadata(new List<MultiTunnelMapPin>(), OnMultiTunnelPinsChanged));
+
     public List<Country> Countries
     {
         get => (List<Country>)GetValue(CountriesProperty);
@@ -213,6 +219,12 @@ public sealed partial class MapControl
     {
         get => (string)GetValue(ConnectPhraseProperty);
         set => SetValue(ConnectPhraseProperty, value);
+    }
+
+    public List<MultiTunnelMapPin> MultiTunnelPins
+    {
+        get => (List<MultiTunnelMapPin>)GetValue(MultiTunnelPinsProperty);
+        set => SetValue(MultiTunnelPinsProperty, value);
     }
 
     private static Color _defaultFillColor = Color.FromArgb(255, 53, 49, 64);
@@ -650,7 +662,7 @@ public sealed partial class MapControl
 
     private void ActivateCountry(GeometryFeature feature)
     {
-        if (feature.IsConnecting())
+        if (feature.IsConnecting() || feature.IsMultiTunnelConnecting())
         {
             return;
         }
@@ -1019,6 +1031,95 @@ public sealed partial class MapControl
         control.InvalidateConnectPhrase();
     }
 
+    private static void OnMultiTunnelPinsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not MapControl control)
+        {
+            return;
+        }
+
+        control.HandleMultiTunnelPinsChanged();
+    }
+
+    private Dictionary<string, MultiTunnelMapPin> BuildMultiTunnelPinLookup()
+    {
+        return (MultiTunnelPins ?? [])
+            .Where(p => !string.IsNullOrWhiteSpace(p.CountryCode))
+            .GroupBy(p => p.CountryCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void HandleMultiTunnelPinsChanged()
+    {
+        Dictionary<string, MultiTunnelMapPin> lookup = BuildMultiTunnelPinLookup();
+        List<IFeature> pins = GetAllPins();
+
+        foreach (IFeature pin in pins)
+        {
+            bool wasMtConnected = pin.IsMultiTunnelConnected();
+            bool wasMtConnecting = pin.IsMultiTunnelConnecting();
+
+            string? countryCode = pin.GetCountryCode();
+            MultiTunnelMapPin? mtPin = !string.IsNullOrWhiteSpace(countryCode) && lookup.TryGetValue(countryCode, out MultiTunnelMapPin? found)
+                ? found
+                : null;
+
+            bool isNowMtConnected = mtPin is { IsConnected: true };
+            bool isNowMtConnecting = mtPin is { IsConnected: false, IsConnecting: true };
+
+            pin.SetIsMultiTunnelConnected(isNowMtConnected);
+            pin.SetIsMultiTunnelConnecting(isNowMtConnecting);
+            pin.SetMultiTunnelColorHex(mtPin?.ColorHex);
+            pin.SetMultiTunnelLabel(mtPin?.SlotLabel);
+
+            if (pin.IsCurrentCountry())
+            {
+                continue;
+            }
+
+            if (!wasMtConnected && isNowMtConnected)
+            {
+                if (!pin.IsOnHover())
+                {
+                    StartPinScaleAnimations(
+                        pin,
+                        wasMtConnecting
+                            ? PinAnimationType.ConnectingToConnected
+                            : PinAnimationType.DisconnectedToCurrentLocation);
+                }
+            }
+            else if (!wasMtConnecting && !isNowMtConnected && isNowMtConnecting)
+            {
+                if (pin.IsOnHover())
+                {
+                    pin.SetIsOnHover(false);
+                    StartPinScaleAnimations(pin, PinAnimationType.OnHoverToConnecting);
+                }
+                else
+                {
+                    StartPinScaleAnimations(
+                        pin,
+                        wasMtConnected
+                            ? PinAnimationType.NormalLocationConnectedToConnecting
+                            : PinAnimationType.NormalLocationDisconnectedToConnecting);
+                }
+            }
+            else if ((wasMtConnected || wasMtConnecting) && !isNowMtConnected && !isNowMtConnecting)
+            {
+                if (!pin.IsOnHover())
+                {
+                    StartPinScaleAnimations(
+                        pin,
+                        wasMtConnected
+                            ? PinAnimationType.NormalLocationConnectedToDisconnected
+                            : PinAnimationType.NormalLocationConnectingToDisconnected);
+                }
+            }
+        }
+
+        _map.RefreshGraphics();
+    }
+
     private void HandleDisconnectedState()
     {
         List<IFeature> pins = GetAllPins();
@@ -1037,7 +1138,10 @@ public sealed partial class MapControl
             else
             {
                 pin.SetIsCurrentCountry(false);
-                StartPinScaleAnimations(pin, pin.GetDisconnectedAnimationType());
+                if (!pin.IsMultiTunnelConnected() && !pin.IsMultiTunnelConnecting())
+                {
+                    StartPinScaleAnimations(pin, pin.GetDisconnectedAnimationType());
+                }
             }
 
             pin.SetIsConnected(false);
@@ -1059,7 +1163,9 @@ public sealed partial class MapControl
             }
             else
             {
-                PinAnimationType? pinAnimationType = pin.GetDisconnectedAnimationType();
+                PinAnimationType? pinAnimationType = !pin.IsMultiTunnelConnected() && !pin.IsMultiTunnelConnecting()
+                    ? pin.GetDisconnectedAnimationType()
+                    : null;
 
                 pin.SetIsConnecting(false);
                 pin.SetIsCurrentCountry(false);
@@ -1102,7 +1208,10 @@ public sealed partial class MapControl
                 if (pin.IsCurrentCountry())
                 {
                     pin.SetIsCurrentCountry(false);
-                    StartPinScaleAnimations(pin, PinAnimationType.NormalLocationConnectingToDisconnected);
+                    if (!pin.IsMultiTunnelConnected() && !pin.IsMultiTunnelConnecting())
+                    {
+                        StartPinScaleAnimations(pin, PinAnimationType.NormalLocationConnectingToDisconnected);
+                    }
                 }
 
                 pin.SetIsConnected(false);
@@ -1115,6 +1224,7 @@ public sealed partial class MapControl
     private void InvalidatePins()
     {
         List<IFeature> features = [];
+        Dictionary<string, MultiTunnelMapPin> multiTunnelLookup = BuildMultiTunnelPinLookup();
 
         foreach (Country country in Countries)
         {
@@ -1123,19 +1233,36 @@ public sealed partial class MapControl
                 Geometry = country.GetMapPoint().ToPoint(),
             };
 
+            MultiTunnelMapPin? mtPin = !string.IsNullOrWhiteSpace(country.Code) &&
+                                       multiTunnelLookup.TryGetValue(country.Code, out MultiTunnelMapPin? found)
+                ? found
+                : null;
+            bool isMtConnected = mtPin is { IsConnected: true };
+            bool isMtConnecting = mtPin is { IsConnected: false, IsConnecting: true };
+
             AnimatedCircleStyle style = new();
             bool isCurrentCountry = country.Code == CurrentCountry?.Code;
-            if (isCurrentCountry)
+            if (isCurrentCountry || isMtConnected)
             {
                 style.TransparentCircleRadius = AnimatedCircleStyle.TRANSPARENT_CIRCLE_RADIUS_ACTIVE;
                 style.NeutralCircleRadius = AnimatedCircleStyle.NEUTRAL_CIRCLE_RADIUS_ACTIVE;
                 style.CenterCircleRadius = AnimatedCircleStyle.CENTER_CIRCLE_RADIUS_ACTIVE;
+            }
+            else if (isMtConnecting)
+            {
+                style.TransparentCircleRadius = AnimatedCircleStyle.TRANSPARENT_CIRCLE_RADIUS_CONNECTING;
+                style.NeutralCircleRadius = AnimatedCircleStyle.NEUTRAL_CIRCLE_RADIUS_CONNECTING;
+                style.CenterCircleRadius = AnimatedCircleStyle.CENTER_CIRCLE_RADIUS_CONNECTING;
             }
 
             feature.SetCountryCode(country.Code);
             feature.SetIsUnderMaintenance(country.IsUnderMaintenance);
             feature.SetIsCurrentCountry(isCurrentCountry);
             feature.SetIsConnected(IsConnected && isCurrentCountry);
+            feature.SetIsMultiTunnelConnected(isMtConnected);
+            feature.SetIsMultiTunnelConnecting(isMtConnecting);
+            feature.SetMultiTunnelColorHex(mtPin?.ColorHex);
+            feature.SetMultiTunnelLabel(mtPin?.SlotLabel);
             feature.Styles.Add(style);
             features.Add(feature);
         }
