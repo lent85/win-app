@@ -44,6 +44,7 @@ public interface IMultiTunnelManager
         string? targetTunnelIdOverride = null,
         TunnelFallbackBehaviorIpcEntity? fallbackBehaviorOverride = null,
         string? fallbackTunnelIdOverride = null);
+    Task<bool> RemoveRoutingPresetAsync(RoutingRulePreset preset);
     Task UpdateRuleAsync(MultiTunnelRuleConfig rule);
     Task SetRuleEnabledAsync(Guid ruleId, bool isEnabled);
     Task DeleteRuleAsync(Guid ruleId);

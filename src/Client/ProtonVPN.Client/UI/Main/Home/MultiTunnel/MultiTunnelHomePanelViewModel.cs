@@ -13,6 +13,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using ProtonVPN.Client.Core.Bases;
 using ProtonVPN.Client.Core.Bases.ViewModels;
+using ProtonVPN.Client.Core.Extensions;
+using ProtonVPN.Client.Core.Models;
+using ProtonVPN.Client.Core.Services.Activation;
 using ProtonVPN.Client.Core.Services.Navigation;
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Localization.Extensions;
@@ -36,6 +39,11 @@ public sealed record RoutingPresetOption(string Id, string DisplayName, string C
     public override string ToString() => DisplayName;
 }
 
+public sealed record QuickRouteOption(string Key, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
 public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     IEventMessageReceiver<MultiTunnelPolicyChangedMessage>,
     IEventMessageReceiver<ServerListChangedMessage>,
@@ -46,6 +54,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     private readonly IConnectionManager _connectionManager;
     private readonly IMainViewNavigator _mainViewNavigator;
     private readonly ISettingsViewNavigator _settingsViewNavigator;
+    private readonly IMainWindowActivator _mainWindowActivator;
     private bool _isRefreshing;
 
     private bool _isMultiTunnelEnabled;
@@ -72,7 +81,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     private string _quickRuleStatus = string.Empty;
 
     private RoutingPresetOption? _selectedQuickPreset;
-    private string? _selectedQuickPresetRoute = "Preset Default";
+    private QuickRouteOption? _selectedQuickPresetRoute;
 
     private string _simApp = "chrome";
     private string _simDomain = "api.openai.com";
@@ -285,7 +294,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         set => SetProperty(ref _selectedQuickPreset, value);
     }
 
-    public string? SelectedQuickPresetRoute
+    public QuickRouteOption? SelectedQuickPresetRoute
     {
         get => _selectedQuickPresetRoute;
         set => SetProperty(ref _selectedQuickPresetRoute, value);
@@ -349,7 +358,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     public ObservableCollection<MultiTunnelRuleItem> Rules { get; } = [];
     public ObservableCollection<string> ConflictMessages { get; } = [];
     public ObservableCollection<RoutingPresetOption> AvailablePresets { get; } = [];
-    public ObservableCollection<string> QuickPresetRouteOptions { get; } = ["Preset Default", "T1", "Direct", "Block"];
+    public ObservableCollection<QuickRouteOption> QuickPresetRouteOptions { get; } = [];
 
     public MultiTunnelHomePanelViewModel(
         IMultiTunnelManager multiTunnelManager,
@@ -357,6 +366,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         IConnectionManager connectionManager,
         IMainViewNavigator mainViewNavigator,
         ISettingsViewNavigator settingsViewNavigator,
+        IMainWindowActivator mainWindowActivator,
         IViewModelHelper viewModelHelper)
         : base(viewModelHelper)
     {
@@ -365,6 +375,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         _connectionManager = connectionManager;
         _mainViewNavigator = mainViewNavigator;
         _settingsViewNavigator = settingsViewNavigator;
+        _mainWindowActivator = mainWindowActivator;
 
         foreach (RoutingRulePreset preset in MultiTunnelRoutingPresetCatalog.All)
         {
@@ -510,10 +521,46 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
     }
 
     [RelayCommand]
+    private async Task BrowseQuickRuleAppAsync()
+    {
+        if (_mainWindowActivator.Window == null)
+        {
+            return;
+        }
+
+        string filePath = await _mainWindowActivator.Window.PickSingleFileAsync(
+            Localizer.Get("Settings_Connection_SplitTunneling_Apps_FilesFilterName"),
+            [ExternalApp.EXE_FILE_EXTENSION]);
+
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        List<string> existing = QuickRuleApp
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (!existing.Contains(filePath, StringComparer.OrdinalIgnoreCase))
+        {
+            existing.Add(filePath);
+            QuickRuleApp = string.Join(", ", existing);
+        }
+
+        QuickRuleStatus = $"Selected executable: {Path.GetFileName(filePath)}";
+    }
+
+    [RelayCommand]
     private Task AddSelectedPresetAsync() => ApplyQuickPresetAsync(RoutingPresetApplyMode.Add);
 
     [RelayCommand]
-    private Task ReplaceWithSelectedPresetAsync() => ApplyQuickPresetAsync(RoutingPresetApplyMode.Replace);
+    private Task ReplaceWithSelectedPresetAsync()
+    {
+        string key = SelectedQuickPresetRoute?.Key ?? "PRESET_DEFAULT";
+        RoutingPresetApplyMode mode = string.Equals(key, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase)
+            ? RoutingPresetApplyMode.Replace
+            : RoutingPresetApplyMode.ReplaceTarget;
+        return ApplyQuickPresetAsync(mode);
+    }
 
     private async Task ApplyQuickPresetAsync(RoutingPresetApplyMode mode)
     {
@@ -526,14 +573,15 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
 
         RuleTargetTypeIpcEntity? targetTypeOverride = null;
         string? targetTunnelOverride = null;
-        string routeChoice = SelectedQuickPresetRoute?.Trim() ?? "Preset Default";
-        if (!string.Equals(routeChoice, "Preset Default", StringComparison.OrdinalIgnoreCase))
+        string routeChoice = SelectedQuickPresetRoute?.Key?.Trim() ?? "PRESET_DEFAULT";
+        string targetDisplay = SelectedQuickPresetRoute?.DisplayName ?? "Preset Default";
+        if (!string.Equals(routeChoice, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(routeChoice, "Direct", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(routeChoice, "DIRECT", StringComparison.OrdinalIgnoreCase))
             {
                 targetTypeOverride = RuleTargetTypeIpcEntity.Direct;
             }
-            else if (string.Equals(routeChoice, "Block", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(routeChoice, "BLOCK", StringComparison.OrdinalIgnoreCase))
             {
                 targetTypeOverride = RuleTargetTypeIpcEntity.Block;
             }
@@ -545,9 +593,30 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
         }
 
         await _multiTunnelManager.ApplyRoutingPresetsAsync([preset], mode, targetTypeOverride, targetTunnelOverride);
-        QuickRuleStatus = mode == RoutingPresetApplyMode.Replace
-            ? $"Replaced routing rules with template '{preset.Name}'."
-            : $"Added template '{preset.Name}' to routing rules.";
+        QuickRuleStatus = mode switch
+        {
+            RoutingPresetApplyMode.Replace => $"Replaced all routing rules with '{preset.Name}'.",
+            RoutingPresetApplyMode.ReplaceTarget => $"Replaced {targetDisplay} rules with '{preset.Name}'.",
+            _ => $"Assigned '{preset.Name}' -> {targetDisplay}.",
+        };
+    }
+
+    public void OpenTemplatesForSlot(string slotId)
+    {
+        QuickRouteOption? match = QuickPresetRouteOptions.FirstOrDefault(o =>
+            string.Equals(o.Key, slotId, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            SelectedQuickPresetRoute = match;
+        }
+
+        QuickRuleTargetType = "Tunnel";
+        QuickRuleTunnelId = slotId;
+        QuickRuleStatus = $"Pick a service template or add a rule -> {match?.DisplayName ?? slotId}.";
+
+        IsPipelinesTabSelected = false;
+        IsSimulatorTabSelected = false;
+        IsRulesTabSelected = true;
     }
 
     [RelayCommand]
@@ -697,6 +766,13 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
             SlotPickerTargets.Clear();
             SlotPickerTargets.Add("NEW");
 
+            Dictionary<string, int> ruleCountsBySlot = _multiTunnelManager.Rules
+                .Where(r => r.IsEnabled && r.TargetType == RuleTargetTypeIpcEntity.Tunnel)
+                .GroupBy(
+                    r => string.IsNullOrWhiteSpace(r.TargetTunnelId) ? "T1" : r.TargetTunnelId.Trim().ToUpperInvariant(),
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
             foreach (MultiTunnelSlotConfig slot in _multiTunnelManager.Slots)
             {
                 string countryDisplay = string.IsNullOrWhiteSpace(slot.CountryCode)
@@ -721,6 +797,7 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                     SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
                     CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
                     SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName} • {slot.ClientIpv4}",
+                    RuleCount = ruleCountsBySlot.GetValueOrDefault(slot.SlotId, 0),
                 });
 
                 SlotPickerTargets.Add(slot.SlotId);
@@ -731,18 +808,20 @@ public partial class MultiTunnelHomePanelViewModel : ActivatableViewModelBase,
                 SelectedEditSlotId = "NEW";
             }
 
-            string? prevQuickRoute = SelectedQuickPresetRoute;
+            string? prevQuickRouteKey = SelectedQuickPresetRoute?.Key;
             QuickPresetRouteOptions.Clear();
-            QuickPresetRouteOptions.Add("Preset Default");
             foreach (MultiTunnelSlotConfig slot in _multiTunnelManager.Slots)
             {
-                QuickPresetRouteOptions.Add(slot.SlotId);
+                string cc = string.IsNullOrWhiteSpace(slot.CountryCode) ? "Auto" : slot.CountryCode;
+                QuickPresetRouteOptions.Add(new QuickRouteOption(slot.SlotId, $"{slot.SlotId} · {cc}"));
             }
-            QuickPresetRouteOptions.Add("Direct");
-            QuickPresetRouteOptions.Add("Block");
-            SelectedQuickPresetRoute = !string.IsNullOrWhiteSpace(prevQuickRoute) && QuickPresetRouteOptions.Contains(prevQuickRoute)
-                ? prevQuickRoute
-                : "Preset Default";
+            QuickPresetRouteOptions.Add(new QuickRouteOption("DIRECT", "Direct"));
+            QuickPresetRouteOptions.Add(new QuickRouteOption("BLOCK", "Block"));
+            QuickPresetRouteOptions.Add(new QuickRouteOption("PRESET_DEFAULT", "Preset Default"));
+
+            SelectedQuickPresetRoute = (!string.IsNullOrWhiteSpace(prevQuickRouteKey)
+                ? QuickPresetRouteOptions.FirstOrDefault(o => string.Equals(o.Key, prevQuickRouteKey, StringComparison.OrdinalIgnoreCase))
+                : null) ?? QuickPresetRouteOptions.FirstOrDefault();
 
             Rules.Clear();
             foreach (MultiTunnelRuleConfig rule in _multiTunnelManager.Rules)

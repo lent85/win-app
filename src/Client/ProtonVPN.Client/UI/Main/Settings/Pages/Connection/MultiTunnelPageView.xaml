@@ -142,6 +142,8 @@ the Free Software Foundation, either version 3 of the License, or
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
                                         <TextBlock Grid.Column="0"
@@ -161,14 +163,30 @@ the Free Software Foundation, either version 3 of the License, or
                                                    Style="{StaticResource CaptionTextBlockStyle}"
                                                    Text="{x:Bind StatusText}" />
 
-                                        <Button Grid.Column="3"
+                                        <Border Grid.Column="3"
+                                                Padding="8,3"
+                                                VerticalAlignment="Center"
+                                                Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                CornerRadius="4">
+                                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Text="{x:Bind RuleCountBadge}" />
+                                        </Border>
+
+                                        <Button Grid.Column="4"
+                                                Click="OnAssignTemplatesToSlotClick"
+                                                Content="+ Templates"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{x:Bind SlotId}" />
+
+                                        <Button Grid.Column="5"
                                                 Click="OnConnectSlotClick"
                                                 Content="{x:Bind ConnectButtonText}"
                                                 IsEnabled="{x:Bind CanToggleConnection}"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="{x:Bind SlotId}" />
 
-                                        <Button Grid.Column="4"
+                                        <Button Grid.Column="6"
                                                 Click="OnRemoveSlotClick"
                                                 Content="Remove"
                                                 Style="{StaticResource SecondaryButtonStyle}"
@@ -206,13 +224,14 @@ the Free Software Foundation, either version 3 of the License, or
                 </StackPanel>
             </Border>
 
-            <!-- 3.5 Routing Service Templates / Presets (Google, Facebook, AI, LAN, etc.) -->
-            <Border Padding="16"
+            <!-- 3.5 Routing Service Templates / Presets (Tunnel-First Assignment) -->
+            <Border x:Name="PresetSectionBorder"
+                    Padding="16"
                     Background="{ThemeResource BackgroundWeakColorBrush}"
                     BorderBrush="{ThemeResource BorderWeakColorBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="12">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -223,10 +242,10 @@ the Free Software Foundation, either version 3 of the License, or
 
                         <StackPanel Grid.Column="0">
                             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
-                                       Text="Routing Service Templates / Presets" />
+                                       Text="Assign Service Templates to a Tunnel" />
                             <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Text="Select ready-made rules (Google, Facebook, AI, Streaming, LAN...) and Add or Replace your routing config." />
+                                       Text="Step 1: Pick the target tunnel (T1-T5, Direct, Block). Step 2: Click + on a template, or check several to assign together." />
                         </StackPanel>
 
                         <TextBlock Grid.Column="1"
@@ -246,6 +265,90 @@ the Free Software Foundation, either version 3 of the License, or
                                 Style="{StaticResource SecondaryButtonStyle}" />
                     </Grid>
 
+                    <!-- Step 1: Target Tunnel / Route Chip Selector Bar -->
+                    <Border Padding="10,8"
+                            Background="{ThemeResource InteractionDefaultColorBrush}"
+                            BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           Text="1. Assign to:" />
+
+                                <ScrollViewer Grid.Column="1"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              VerticalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.PresetTargetOptions}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="6" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="local:PresetTargetOption">
+                                                <Button Padding="10,5"
+                                                        Background="{x:Bind ChipBackgroundBrush}"
+                                                        BorderBrush="{x:Bind ChipBorderBrush}"
+                                                        BorderThickness="1.5"
+                                                        Click="OnSelectPresetTargetClick"
+                                                        CornerRadius="16"
+                                                        Tag="{x:Bind Key}">
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="6">
+                                                        <Ellipse Width="8"
+                                                                 Height="8"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="{x:Bind DotBrush}" />
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Text="{x:Bind DisplayLabel}" />
+                                                        <Border Padding="5,0"
+                                                                VerticalAlignment="Center"
+                                                                Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                                CornerRadius="8"
+                                                                Visibility="{x:Bind HasRuleCount, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Text="{x:Bind RuleCountText}" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8"
+                                        Visibility="{x:Bind ViewModel.IsPresetFallbackAllowed, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextWeakColorBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Text="When tunnel drops:" />
+                                <ComboBox Width="170"
+                                          ItemsSource="{x:Bind ViewModel.PresetFallbackOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackBehavior, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" />
+                                <ComboBox Width="92"
+                                          ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackTunnelId, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          Visibility="{x:Bind ViewModel.IsPresetFallbackTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Step 2: Filter & Pick Templates -->
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -253,7 +356,7 @@ the Free Software Foundation, either version 3 of the License, or
                         </Grid.ColumnDefinitions>
 
                         <TextBox Grid.Column="0"
-                                 PlaceholderText="Search templates (e.g., google, facebook, openai, lan)..."
+                                 PlaceholderText="2. Search templates (e.g., google, facebook, openai, lan)..."
                                  Text="{x:Bind ViewModel.PresetSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <ComboBox Grid.Column="1"
@@ -263,7 +366,7 @@ the Free Software Foundation, either version 3 of the License, or
                                   Style="{StaticResource ComboBoxStyle}" />
                     </Grid>
 
-                    <ScrollViewer MaxHeight="220"
+                    <ScrollViewer MaxHeight="260"
                                   VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{x:Bind ViewModel.FilteredPresets}">
                             <ItemsControl.ItemTemplate>
@@ -314,14 +417,32 @@ the Free Software Foundation, either version 3 of the License, or
                                                            TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
 
-                                            <Border Grid.Column="2"
-                                                    Padding="8,2"
-                                                    VerticalAlignment="Center"
-                                                    Background="{ThemeResource BackgroundWeakColorBrush}"
-                                                    CornerRadius="4">
-                                                <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                                           Text="{x:Bind RecommendedTargetLabel}" />
-                                            </Border>
+                                            <StackPanel Grid.Column="2"
+                                                        VerticalAlignment="Center"
+                                                        Orientation="Horizontal"
+                                                        Spacing="6">
+                                                <Border Padding="8,3"
+                                                        VerticalAlignment="Center"
+                                                        Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                        CornerRadius="4"
+                                                        Visibility="{x:Bind IsCurrentlyAssigned, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="5">
+                                                        <Ellipse Width="7"
+                                                                 Height="7"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="{x:Bind CurrentRouteBrush}" />
+                                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Text="{x:Bind CurrentRouteLabel}" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Button Padding="10,4"
+                                                        Click="OnQuickAssignPresetClick"
+                                                        Content="{x:Bind QuickActionText}"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Tag="{x:Bind Id}" />
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -329,66 +450,32 @@ the Free Software Foundation, either version 3 of the License, or
                         </ItemsControl>
                     </ScrollViewer>
 
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="95" />
-                            <ColumnDefinition Width="165" />
-                            <ColumnDefinition Width="95" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <ComboBox Grid.Column="0"
-                                  HorizontalAlignment="Stretch"
-                                  Header="Route Override"
-                                  ItemsSource="{x:Bind ViewModel.PresetTargetTypeOptions, Mode=OneTime}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedPresetTargetType, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}" />
-
-                        <ComboBox Grid.Column="1"
-                                  HorizontalAlignment="Stretch"
-                                  Header="Tunnel"
-                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedPresetTunnelId, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}"
-                                  Visibility="{x:Bind ViewModel.IsPresetTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                        <ComboBox Grid.Column="2"
-                                  HorizontalAlignment="Stretch"
-                                  Header="Fallback Override"
-                                  ItemsSource="{x:Bind ViewModel.PresetFallbackOptions, Mode=OneTime}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackBehavior, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}"
-                                  Visibility="{x:Bind ViewModel.IsPresetFallbackAllowed, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                        <ComboBox Grid.Column="3"
-                                  HorizontalAlignment="Stretch"
-                                  Header="Fallback Slot"
-                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions, Mode=OneTime}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedPresetFallbackTunnelId, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}"
-                                  Visibility="{x:Bind ViewModel.IsPresetFallbackTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    </Grid>
-
+                    <!-- Step 3: Batch Action Bar -->
                     <StackPanel Orientation="Horizontal"
                                 Spacing="8">
                         <Button Command="{x:Bind ViewModel.AddSelectedPresetsCommand, Mode=OneTime}"
-                                Content="+ Add to Routing"
+                                Content="{x:Bind ViewModel.AssignSelectedButtonText}"
                                 IsEnabled="{x:Bind ViewModel.HasSelectedPresets}"
                                 Style="{StaticResource PrimaryButtonStyle}" />
+                        <Button Command="{x:Bind ViewModel.ReplaceTargetWithSelectedPresetsCommand, Mode=OneTime}"
+                                Content="{x:Bind ViewModel.ReplaceTargetButtonText}"
+                                IsEnabled="{x:Bind ViewModel.HasSelectedPresets}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Visibility="{x:Bind ViewModel.IsSpecificPresetTargetSelected, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <Button Command="{x:Bind ViewModel.ReplaceWithSelectedPresetsCommand, Mode=OneTime}"
-                                Content="Replace Routing"
+                                Content="Replace All"
                                 IsEnabled="{x:Bind ViewModel.HasSelectedPresets}"
                                 Style="{StaticResource SecondaryButtonStyle}" />
                         <Button Command="{x:Bind ViewModel.FillEditorFromSelectedPresetCommand, Mode=OneTime}"
                                 Content="Load into Editor"
                                 Style="{StaticResource SecondaryButtonStyle}" />
-                        <TextBlock VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextWeakColorBrush}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Text="{x:Bind ViewModel.PresetStatusText}"
-                                   Visibility="{x:Bind ViewModel.HasPresetStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </StackPanel>
+
+                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="{x:Bind ViewModel.PresetStatusText}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind ViewModel.HasPresetStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
             </Border>
 
@@ -530,6 +617,8 @@ the Free Software Foundation, either version 3 of the License, or
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox Grid.Column="0"
                                          Header="Rule Name"
@@ -537,9 +626,95 @@ the Free Software Foundation, either version 3 of the License, or
                                          Text="{x:Bind ViewModel.RuleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBox Grid.Column="1"
                                          Header="Applications (comma-separated)"
-                                         PlaceholderText="chrome, qbittorrent, C:\Path\app.exe"
+                                         PlaceholderText="opera, chrome, or C:\Path\app.exe"
                                          Text="{x:Bind ViewModel.RuleAppPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button Grid.Column="2"
+                                        VerticalAlignment="Bottom"
+                                        Command="{x:Bind ViewModel.ToggleAppPickerCommand, Mode=OneTime}"
+                                        Content="Pick App / Process"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
+                                <Button Grid.Column="3"
+                                        VerticalAlignment="Bottom"
+                                        Command="{x:Bind ViewModel.BrowseAppExecutableCommand, Mode=OneTime}"
+                                        Content="Browse .exe"
+                                        Style="{StaticResource SecondaryButtonStyle}" />
                             </Grid>
+
+                            <!-- Running Processes & Installed Apps Picker -->
+                            <Border Padding="10"
+                                    Background="{ThemeResource InteractionDefaultColorBrush}"
+                                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Visibility="{x:Bind ViewModel.IsAppPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0"
+                                                 PlaceholderText="Filter running processes or installed apps (e.g., opera, chrome)..."
+                                                 Text="{x:Bind ViewModel.AppPickerSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1"
+                                                Command="{x:Bind ViewModel.RefreshDiscoveredAppsCommand, Mode=OneTime}"
+                                                Content="Refresh"
+                                                Style="{StaticResource SecondaryButtonStyle}" />
+                                        <Button Grid.Column="2"
+                                                Command="{x:Bind ViewModel.ToggleAppPickerCommand, Mode=OneTime}"
+                                                Content="Close"
+                                                Style="{StaticResource SecondaryButtonStyle}" />
+                                    </Grid>
+                                    <ScrollViewer MaxHeight="200"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.FilteredDiscoveredApps}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:DiscoveredAppItem">
+                                                    <Border Margin="0,2,0,0"
+                                                            Padding="8,5"
+                                                            Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                            BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="4">
+                                                        <Grid ColumnSpacing="8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0"
+                                                                        Spacing="1">
+                                                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                           Text="{x:Bind DisplayName}" />
+                                                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                                           Text="{x:Bind Subtitle}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                            <Border Grid.Column="1"
+                                                                    Padding="6,2"
+                                                                    VerticalAlignment="Center"
+                                                                    Background="{ThemeResource InteractionDefaultColorBrush}"
+                                                                    CornerRadius="4">
+                                                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                                           Text="{x:Bind BadgeText}" />
+                                                            </Border>
+                                                            <Button Grid.Column="2"
+                                                                    Padding="8,3"
+                                                                    Click="OnPickDiscoveredAppClick"
+                                                                    Content="+ Add"
+                                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                                    Tag="{x:Bind ExecutablePath}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
 
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>

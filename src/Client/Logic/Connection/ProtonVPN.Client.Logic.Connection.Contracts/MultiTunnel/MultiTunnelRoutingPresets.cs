@@ -17,6 +17,7 @@ public enum RoutingPresetApplyMode
 {
     Add = 0,
     Replace = 1,
+    ReplaceTarget = 2,
 }
 
 public sealed record RoutingRulePreset(
@@ -79,11 +80,34 @@ public sealed record RoutingRulePreset(
             || Name.Contains(q, StringComparison.OrdinalIgnoreCase)
             || Description.Contains(q, StringComparison.OrdinalIgnoreCase)
             || Category.Contains(q, StringComparison.OrdinalIgnoreCase)
-            || (DomainPattern?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (AppPattern?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (IpCidrPattern?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (PortPattern?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);
+            || (DomainPattern is not null && DomainPattern.Contains(q, StringComparison.OrdinalIgnoreCase))
+            || (AppPattern is not null && AppPattern.Contains(q, StringComparison.OrdinalIgnoreCase))
+            || (IpCidrPattern is not null && IpCidrPattern.Contains(q, StringComparison.OrdinalIgnoreCase))
+            || (PortPattern is not null && PortPattern.Contains(q, StringComparison.OrdinalIgnoreCase));
     }
+
+    public bool MatchesRule(MultiTunnelRuleConfig? rule)
+    {
+        if (rule is null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rule.Name) &&
+            string.Equals(rule.Name.Trim(), Name.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return rule.Protocol == Protocol &&
+               string.Equals(NormalizePattern(rule.AppPattern), NormalizePattern(AppPattern), StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(NormalizePattern(rule.DomainPattern), NormalizePattern(DomainPattern), StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(NormalizePattern(rule.IpCidrPattern), NormalizePattern(IpCidrPattern), StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(NormalizePattern(rule.PortPattern), NormalizePattern(PortPattern), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePattern(string? pattern) =>
+        string.IsNullOrWhiteSpace(pattern) ? string.Empty : pattern.Trim();
 
     public MultiTunnelRuleConfig ToRuleConfig(
         IReadOnlyCollection<string> availableSlotIds,

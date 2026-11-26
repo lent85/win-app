@@ -333,4 +333,40 @@ public class MultiTunnelManagerTests
         Assert.IsFalse(manager.Slots.First(s => s.SlotId == "T2").IsConnected);
         Assert.IsFalse(manager.Slots.First(s => s.SlotId == "T3").IsConnected);
     }
+
+    [TestMethod]
+    public async Task ApplyRoutingPresetsAsync_UpsertAndReplaceTarget_MovesWithoutDuplicatesAndPreservesOtherSlots()
+    {
+        MultiTunnelManager manager = CreateManager();
+        await manager.AddSlotAsync("SG", "SG#1");
+
+        RoutingRulePreset google = MultiTunnelRoutingPresetCatalog.FindById("google-services")!;
+        RoutingRulePreset facebook = MultiTunnelRoutingPresetCatalog.FindById("facebook-services")!;
+        RoutingRulePreset youtube = MultiTunnelRoutingPresetCatalog.FindById("youtube-media")!;
+        RoutingRulePreset ai = MultiTunnelRoutingPresetCatalog.FindById("ai-assistants")!;
+        RoutingRulePreset lan = MultiTunnelRoutingPresetCatalog.FindById("private-lan")!;
+
+        await manager.ApplyRoutingPresetsAsync([ai], RoutingPresetApplyMode.Replace, RuleTargetTypeIpcEntity.Tunnel, "T1");
+        await manager.ApplyRoutingPresetsAsync([lan], RoutingPresetApplyMode.Add, RuleTargetTypeIpcEntity.Direct);
+        await manager.ApplyRoutingPresetsAsync([google], RoutingPresetApplyMode.Add, RuleTargetTypeIpcEntity.Tunnel, "T1");
+        await manager.ApplyRoutingPresetsAsync([facebook], RoutingPresetApplyMode.Add, RuleTargetTypeIpcEntity.Tunnel, "T2");
+
+        // Moving google-services from T1 -> T2 via Add must upsert cleanly without duplicates
+        await manager.ApplyRoutingPresetsAsync([google], RoutingPresetApplyMode.Add, RuleTargetTypeIpcEntity.Tunnel, "T2");
+        Assert.AreEqual(1, manager.Rules.Count(r => google.MatchesRule(r)));
+        Assert.AreEqual("T2", manager.Rules.First(r => google.MatchesRule(r)).TargetTunnelId);
+
+        // ReplaceTarget on T2 replaces T2 rules (google + facebook) with youtube, while preserving T1 (ai) & Direct (lan)
+        await manager.ApplyRoutingPresetsAsync([youtube], RoutingPresetApplyMode.ReplaceTarget, RuleTargetTypeIpcEntity.Tunnel, "T2");
+        Assert.AreEqual(3, manager.Rules.Count);
+        Assert.IsTrue(manager.Rules.Any(r => youtube.MatchesRule(r) && r.TargetTunnelId == "T2"));
+        Assert.IsTrue(manager.Rules.Any(r => ai.MatchesRule(r) && r.TargetTunnelId == "T1"));
+        Assert.IsTrue(manager.Rules.Any(r => lan.MatchesRule(r) && r.TargetType == RuleTargetTypeIpcEntity.Direct));
+        Assert.IsFalse(manager.Rules.Any(r => google.MatchesRule(r) || facebook.MatchesRule(r)));
+
+        // RemoveRoutingPresetAsync cleanly removes youtube rule
+        bool removed = await manager.RemoveRoutingPresetAsync(youtube);
+        Assert.IsTrue(removed);
+        Assert.AreEqual(2, manager.Rules.Count);
+    }
 }

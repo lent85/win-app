@@ -14,6 +14,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Media;
 using ProtonVPN.Client.Core.Bases;
+using ProtonVPN.Client.Core.Extensions;
+using ProtonVPN.Client.Core.Models;
 using ProtonVPN.Client.Core.Services.Activation;
 using ProtonVPN.Client.Core.Services.Navigation;
 using ProtonVPN.Client.EventMessaging.Contracts;
@@ -60,6 +62,8 @@ public sealed class MultiTunnelSlotItem
     public string ConnectButtonText => IsConnecting ? "Connecting..." : (IsConnected ? "Disconnect" : "Connect");
     public required bool CanRemove { get; init; }
     public required string SlotSummary { get; init; }
+    public int RuleCount { get; init; }
+    public string RuleCountBadge => RuleCount == 1 ? "1 rule" : $"{RuleCount} rules";
 }
 
 public sealed class MultiTunnelRuleItem
@@ -73,6 +77,34 @@ public sealed class MultiTunnelRuleItem
     public required string CriteriaSummary { get; init; }
 }
 
+public partial class PresetTargetOption : ObservableObject
+{
+    public required string Key { get; init; }
+    public required string ShortLabel { get; init; }
+    public required string DisplayLabel { get; init; }
+    public required string RuleCountText { get; init; }
+    public bool HasRuleCount => !string.IsNullOrEmpty(RuleCountText);
+    public required string ColorHex { get; init; }
+    public required SolidColorBrush DotBrush { get; init; }
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    public SolidColorBrush ChipBorderBrush => IsSelected
+        ? DotBrush
+        : SlotColorBrushHelper.ToBrush("#4A4A62");
+
+    public SolidColorBrush ChipBackgroundBrush => IsSelected
+        ? SlotColorBrushHelper.ToBrush(ColorHex, alpha: 42)
+        : SlotColorBrushHelper.ToBrush("#232332");
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ChipBorderBrush));
+        OnPropertyChanged(nameof(ChipBackgroundBrush));
+    }
+}
+
 public partial class MultiTunnelPresetItem : ObservableObject
 {
     public required string Id { get; init; }
@@ -84,6 +116,21 @@ public partial class MultiTunnelPresetItem : ObservableObject
 
     [ObservableProperty]
     private bool _isSelected;
+
+    [ObservableProperty]
+    private bool _isCurrentlyAssigned;
+
+    [ObservableProperty]
+    private string _currentRouteLabel = string.Empty;
+
+    [ObservableProperty]
+    private SolidColorBrush? _currentRouteBrush;
+
+    [ObservableProperty]
+    private bool _isAssignedToSelectedTarget;
+
+    [ObservableProperty]
+    private string _quickActionText = "+ T1";
 }
 
 public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
@@ -92,8 +139,16 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
 {
     private readonly IMultiTunnelManager _multiTunnelManager;
     private readonly IServersLoader _serversLoader;
+    private readonly IMainWindowActivator _mainWindowActivator;
     private readonly List<MultiTunnelPresetItem> _allPresets = [];
+    private IReadOnlyList<DiscoveredAppItem> _allDiscoveredApps = [];
     private bool _isRefreshing;
+
+    [ObservableProperty]
+    private bool _isAppPickerOpen;
+
+    [ObservableProperty]
+    private string _appPickerSearchQuery = string.Empty;
 
     [ObservableProperty]
     private string? _selectedPresetCategory = "All";
@@ -102,10 +157,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     private string _presetSearchQuery = string.Empty;
 
     [ObservableProperty]
-    private string? _selectedPresetTargetType = "Preset Default";
-
-    [ObservableProperty]
-    private string? _selectedPresetTunnelId = "T1";
+    private string _selectedPresetTargetKey = "T1";
 
     [ObservableProperty]
     private string? _selectedPresetFallbackBehavior = "Preset Default";
@@ -218,14 +270,29 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public bool IsRuleFallbackTunnel => IsRuleTargetTunnel &&
                                         string.Equals(RuleFallbackBehavior, "FallbackToTunnel", StringComparison.OrdinalIgnoreCase);
 
-    public bool IsPresetTargetTunnel => string.Equals(SelectedPresetTargetType, "Tunnel", StringComparison.OrdinalIgnoreCase);
-
     public bool IsPresetFallbackAllowed =>
-        !string.Equals(SelectedPresetTargetType, "Direct", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(SelectedPresetTargetType, "Block", StringComparison.OrdinalIgnoreCase);
+        !string.Equals(SelectedPresetTargetKey, "DIRECT", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(SelectedPresetTargetKey, "BLOCK", StringComparison.OrdinalIgnoreCase);
 
     public bool IsPresetFallbackTunnel => IsPresetFallbackAllowed &&
                                           string.Equals(SelectedPresetFallbackBehavior, "FallbackToTunnel", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsSpecificPresetTargetSelected =>
+        !string.Equals(SelectedPresetTargetKey, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase);
+
+    public string SelectedTargetShortLabel => GetShortRouteLabel(SelectedPresetTargetKey);
+
+    public string AssignSelectedButtonText
+    {
+        get
+        {
+            int count = _allPresets.Count(p => p.IsSelected);
+            string target = SelectedTargetShortLabel;
+            return count > 0 ? $"+ Assign {count} to {target}" : $"+ Assign to {target}";
+        }
+    }
+
+    public string ReplaceTargetButtonText => $"Replace {SelectedTargetShortLabel}";
 
     public bool HasPresetStatus => !string.IsNullOrWhiteSpace(PresetStatusText);
 
@@ -235,7 +302,6 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public IReadOnlyList<string> ProtocolOptions { get; } = ["Any", "Tcp", "Udp"];
     public IReadOnlyList<string> FallbackOptions { get; } = ["KillSwitchBlock", "FallbackToTunnel", "FallbackToDirect"];
     public IReadOnlyList<string> PresetCategoryOptions { get; } = ["All", "BigTech", "Social", "AiDev", "MediaGaming", "Network"];
-    public IReadOnlyList<string> PresetTargetTypeOptions { get; } = ["Preset Default", "Direct", "Tunnel", "Block"];
     public IReadOnlyList<string> PresetFallbackOptions { get; } = ["Preset Default", "KillSwitchBlock", "FallbackToTunnel", "FallbackToDirect"];
 
     public ObservableCollection<string> SlotIdOptions { get; } = ["T1", "T2", "T3", "T4", "T5"];
@@ -244,7 +310,9 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public ObservableCollection<SlotServerOption> AvailableServers { get; } = [];
     public ObservableCollection<MultiTunnelSlotItem> Slots { get; } = [];
     public ObservableCollection<MultiTunnelRuleItem> Rules { get; } = [];
+    public ObservableCollection<PresetTargetOption> PresetTargetOptions { get; } = [];
     public ObservableCollection<MultiTunnelPresetItem> FilteredPresets { get; } = [];
+    public ObservableCollection<DiscoveredAppItem> FilteredDiscoveredApps { get; } = [];
     public ObservableCollection<string> ConflictMessages { get; } = [];
 
     public MultiTunnelPageViewModel(
@@ -252,6 +320,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         IMainViewNavigator mainViewNavigator,
         ISettingsViewNavigator settingsViewNavigator,
         IMainWindowOverlayActivator mainWindowOverlayActivator,
+        IMainWindowActivator mainWindowActivator,
         ISettings settings,
         ISettingsConflictResolver settingsConflictResolver,
         IConnectionManager connectionManager,
@@ -267,6 +336,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
                connectionManager,
                viewModelHelper)
     {
+        _mainWindowActivator = mainWindowActivator;
         _multiTunnelManager = multiTunnelManager;
         _serversLoader = serversLoader;
 
@@ -349,11 +419,21 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         RefreshFilteredPresets();
     }
 
-    partial void OnSelectedPresetTargetTypeChanged(string? value)
+    partial void OnSelectedPresetTargetKeyChanged(string value)
     {
-        OnPropertyChanged(nameof(IsPresetTargetTunnel));
         OnPropertyChanged(nameof(IsPresetFallbackAllowed));
         OnPropertyChanged(nameof(IsPresetFallbackTunnel));
+        OnPropertyChanged(nameof(IsSpecificPresetTargetSelected));
+        OnPropertyChanged(nameof(SelectedTargetShortLabel));
+        OnPropertyChanged(nameof(AssignSelectedButtonText));
+        OnPropertyChanged(nameof(ReplaceTargetButtonText));
+
+        foreach (PresetTargetOption opt in PresetTargetOptions)
+        {
+            opt.IsSelected = string.Equals(opt.Key, value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        RefreshPresetAssignmentStates();
     }
 
     partial void OnSelectedPresetFallbackBehaviorChanged(string? value)
@@ -364,6 +444,28 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     partial void OnPresetStatusTextChanged(string value)
     {
         OnPropertyChanged(nameof(HasPresetStatus));
+    }
+
+    public void SelectPresetTarget(string targetKey)
+    {
+        if (string.IsNullOrWhiteSpace(targetKey))
+        {
+            return;
+        }
+
+        string normalized = targetKey.Trim().ToUpperInvariant();
+        if (!PresetTargetOptions.Any(o => string.Equals(o.Key, normalized, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        SelectedPresetTargetKey = normalized;
+        PresetTargetOption? selected = PresetTargetOptions.FirstOrDefault(o =>
+            string.Equals(o.Key, normalized, StringComparison.OrdinalIgnoreCase));
+        if (selected is not null)
+        {
+            PresetStatusText = $"Target set to {selected.DisplayLabel} — click + on any template or check multiple to assign.";
+        }
     }
 
     public void SetPresetSelected(string presetId, bool isSelected)
@@ -401,7 +503,41 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
     public Task AddSelectedPresetsAsync() => ApplySelectedPresetsAsync(RoutingPresetApplyMode.Add);
 
     [RelayCommand]
+    public Task ReplaceTargetWithSelectedPresetsAsync() => ApplySelectedPresetsAsync(RoutingPresetApplyMode.ReplaceTarget);
+
+    [RelayCommand]
     public Task ReplaceWithSelectedPresetsAsync() => ApplySelectedPresetsAsync(RoutingPresetApplyMode.Replace);
+
+    public async Task QuickTogglePresetForTargetAsync(string presetId)
+    {
+        RoutingRulePreset? preset = MultiTunnelRoutingPresetCatalog.FindById(presetId);
+        MultiTunnelPresetItem? item = _allPresets.FirstOrDefault(p =>
+            string.Equals(p.Id, presetId, StringComparison.OrdinalIgnoreCase));
+        if (preset is null || item is null)
+        {
+            return;
+        }
+
+        if (item.IsAssignedToSelectedTarget)
+        {
+            bool removed = await _multiTunnelManager.RemoveRoutingPresetAsync(preset);
+            PresetStatusText = removed
+                ? $"Removed '{preset.Name}' from {SelectedTargetShortLabel}."
+                : $"Could not remove '{preset.Name}'.";
+            return;
+        }
+
+        (RuleTargetTypeIpcEntity? targetTypeOverride, string? targetTunnelOverride, TunnelFallbackBehaviorIpcEntity? fbOverride, string? fbTunnelOverride) = ParsePresetOverrides();
+        await _multiTunnelManager.ApplyRoutingPresetsAsync(
+            [preset],
+            RoutingPresetApplyMode.Add,
+            targetTypeOverride,
+            targetTunnelOverride,
+            fbOverride,
+            fbTunnelOverride);
+
+        PresetStatusText = $"Assigned '{preset.Name}' -> {SelectedTargetShortLabel}.";
+    }
 
     [RelayCommand]
     public void FillEditorFromSelectedPreset()
@@ -446,7 +582,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
 
         if (selected.Count == 0)
         {
-            PresetStatusText = "Select one or more service templates first.";
+            PresetStatusText = "Check one or more service templates, or click + on any template row.";
             return;
         }
 
@@ -459,9 +595,12 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
             fbOverride,
             fbTunnelOverride);
 
-        PresetStatusText = mode == RoutingPresetApplyMode.Replace
-            ? $"Replaced routing rules with {applied} template rule(s)."
-            : $"Added {applied} template rule(s) to the top of the priority list.";
+        PresetStatusText = mode switch
+        {
+            RoutingPresetApplyMode.Replace => $"Replaced all routing rules with {applied} template(s).",
+            RoutingPresetApplyMode.ReplaceTarget => $"Replaced {SelectedTargetShortLabel} rules with {applied} template(s).",
+            _ => $"Assigned {applied} template(s) -> {SelectedTargetShortLabel}.",
+        };
         ClearSelectedPresets();
     }
 
@@ -472,13 +611,21 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         TunnelFallbackBehaviorIpcEntity? fallbackBehavior = null;
         string? fallbackTunnelId = null;
 
-        if (!string.Equals(SelectedPresetTargetType, "Preset Default", StringComparison.OrdinalIgnoreCase) &&
-            Enum.TryParse(SelectedPresetTargetType, out RuleTargetTypeIpcEntity parsedTarget))
+        string key = SelectedPresetTargetKey?.Trim().ToUpperInvariant() ?? "PRESET_DEFAULT";
+        if (!string.Equals(key, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase))
         {
-            targetType = parsedTarget;
-            if (parsedTarget == RuleTargetTypeIpcEntity.Tunnel)
+            if (string.Equals(key, "DIRECT", StringComparison.OrdinalIgnoreCase))
             {
-                targetTunnelId = string.IsNullOrWhiteSpace(SelectedPresetTunnelId) ? "T1" : SelectedPresetTunnelId;
+                targetType = RuleTargetTypeIpcEntity.Direct;
+            }
+            else if (string.Equals(key, "BLOCK", StringComparison.OrdinalIgnoreCase))
+            {
+                targetType = RuleTargetTypeIpcEntity.Block;
+            }
+            else
+            {
+                targetType = RuleTargetTypeIpcEntity.Tunnel;
+                targetTunnelId = key;
             }
         }
 
@@ -513,6 +660,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         }
         RefreshFilteredPresets();
         UpdatePresetSelectionState();
+        RefreshPresetAssignmentStates();
     }
 
     private void RefreshFilteredPresets()
@@ -542,6 +690,104 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         int count = _allPresets.Count(p => p.IsSelected);
         HasSelectedPresets = count > 0;
         SelectedPresetCountText = $"{count} selected";
+        OnPropertyChanged(nameof(AssignSelectedButtonText));
+    }
+
+    private void RefreshPresetAssignmentStates()
+    {
+        IReadOnlyList<MultiTunnelRuleConfig> currentRules = _multiTunnelManager.Rules;
+        foreach (MultiTunnelPresetItem item in _allPresets)
+        {
+            RoutingRulePreset? preset = MultiTunnelRoutingPresetCatalog.FindById(item.Id);
+            if (preset is null)
+            {
+                continue;
+            }
+
+            MultiTunnelRuleConfig? matched = currentRules.FirstOrDefault(r => r.IsEnabled && preset.MatchesRule(r))
+                ?? currentRules.FirstOrDefault(r => preset.MatchesRule(r));
+
+            string? matchedRouteKey = null;
+            if (matched is not null)
+            {
+                matchedRouteKey = matched.TargetType switch
+                {
+                    RuleTargetTypeIpcEntity.Direct => "DIRECT",
+                    RuleTargetTypeIpcEntity.Block => "BLOCK",
+                    _ => string.IsNullOrWhiteSpace(matched.TargetTunnelId) ? "T1" : matched.TargetTunnelId.ToUpperInvariant(),
+                };
+                item.IsCurrentlyAssigned = true;
+                item.CurrentRouteLabel = matched.TargetSummary;
+                item.CurrentRouteBrush = GetRouteBrush(matchedRouteKey);
+            }
+            else
+            {
+                item.IsCurrentlyAssigned = false;
+                item.CurrentRouteLabel = string.Empty;
+                item.CurrentRouteBrush = null;
+            }
+
+            string effectiveTarget = ResolveEffectiveTargetKey(preset);
+            string shortTarget = GetShortRouteLabel(effectiveTarget);
+            item.IsAssignedToSelectedTarget = matchedRouteKey is not null &&
+                                              string.Equals(matchedRouteKey, effectiveTarget, StringComparison.OrdinalIgnoreCase);
+            item.QuickActionText = item.IsAssignedToSelectedTarget
+                ? $"✓ {shortTarget}"
+                : (item.IsCurrentlyAssigned ? $"→ {shortTarget}" : $"+ {shortTarget}");
+        }
+    }
+
+    private string ResolveEffectiveTargetKey(RoutingRulePreset preset)
+    {
+        string key = SelectedPresetTargetKey?.Trim().ToUpperInvariant() ?? "PRESET_DEFAULT";
+        if (!string.Equals(key, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase))
+        {
+            return key;
+        }
+
+        return preset.DefaultTargetType switch
+        {
+            RuleTargetTypeIpcEntity.Direct => "DIRECT",
+            RuleTargetTypeIpcEntity.Block => "BLOCK",
+            _ => string.IsNullOrWhiteSpace(preset.DefaultTargetTunnelId)
+                ? "T1"
+                : preset.DefaultTargetTunnelId.Trim().ToUpperInvariant(),
+        };
+    }
+
+    private string GetShortRouteLabel(string? routeKey)
+    {
+        string key = routeKey?.Trim().ToUpperInvariant() ?? "PRESET_DEFAULT";
+        if (key == "PRESET_DEFAULT")
+        {
+            return "Auto";
+        }
+        if (key == "DIRECT")
+        {
+            return "Direct";
+        }
+        if (key == "BLOCK")
+        {
+            return "Block";
+        }
+
+        MultiTunnelSlotConfig? slot = _multiTunnelManager.Slots.FirstOrDefault(s =>
+            string.Equals(s.SlotId, key, StringComparison.OrdinalIgnoreCase));
+        return slot is not null && !string.IsNullOrWhiteSpace(slot.CountryCode)
+            ? $"{key} ({slot.CountryCode})"
+            : key;
+    }
+
+    private static SolidColorBrush GetRouteBrush(string routeKey)
+    {
+        string colorHex = routeKey.ToUpperInvariant() switch
+        {
+            "DIRECT" => "#38BDF8",
+            "BLOCK" => "#F7607B",
+            "PRESET_DEFAULT" => "#8A6EFF",
+            _ => MultiTunnelSlotConfig.GetSlotColorHex(routeKey),
+        };
+        return SlotColorBrushHelper.ToBrush(colorHex);
     }
 
     [RelayCommand]
@@ -645,6 +891,89 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
         }
 
         CancelEditRule();
+    }
+
+    partial void OnAppPickerSearchQueryChanged(string value)
+    {
+        RefreshFilteredDiscoveredApps();
+    }
+
+    [RelayCommand]
+    public void ToggleAppPicker()
+    {
+        IsAppPickerOpen = !IsAppPickerOpen;
+        if (IsAppPickerOpen)
+        {
+            RefreshDiscoveredApps();
+        }
+    }
+
+    [RelayCommand]
+    public void RefreshDiscoveredApps()
+    {
+        _allDiscoveredApps = WindowsAppDiscoveryHelper.DiscoverApps();
+        RefreshFilteredDiscoveredApps();
+    }
+
+    public void PickDiscoveredApp(string executablePath)
+    {
+        AppendRuleAppEntry(executablePath);
+        SlotPickerStatus = $"Added application: {Path.GetFileName(executablePath)}";
+    }
+
+    [RelayCommand]
+    public async Task BrowseAppExecutableAsync()
+    {
+        if (_mainWindowActivator.Window == null)
+        {
+            return;
+        }
+
+        string filePath = await _mainWindowActivator.Window.PickSingleFileAsync(
+            Localizer.Get("Settings_Connection_SplitTunneling_Apps_FilesFilterName"),
+            [ExternalApp.EXE_FILE_EXTENSION]);
+
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            AppendRuleAppEntry(filePath);
+            SlotPickerStatus = $"Added executable: {filePath}";
+        }
+    }
+
+    private void RefreshFilteredDiscoveredApps()
+    {
+        FilteredDiscoveredApps.Clear();
+        string q = AppPickerSearchQuery?.Trim() ?? string.Empty;
+        foreach (DiscoveredAppItem app in _allDiscoveredApps)
+        {
+            bool match = string.IsNullOrEmpty(q) ||
+                         app.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                         app.ProcessName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                         app.ExecutablePath.Contains(q, StringComparison.OrdinalIgnoreCase);
+            if (match)
+            {
+                FilteredDiscoveredApps.Add(app);
+            }
+        }
+    }
+
+    private void AppendRuleAppEntry(string entry)
+    {
+        string trimmed = entry.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return;
+        }
+
+        List<string> existing = RuleAppPattern
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        if (!existing.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+        {
+            existing.Add(trimmed);
+            RuleAppPattern = string.Join(", ", existing);
+        }
     }
 
     [RelayCommand]
@@ -762,6 +1091,31 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
             SlotPickerTargets.Clear();
             SlotPickerTargets.Add("NEW");
 
+            Dictionary<string, int> ruleCountsBySlot = new(StringComparer.OrdinalIgnoreCase);
+            int directCount = 0;
+            int blockCount = 0;
+            foreach (MultiTunnelRuleConfig r in _multiTunnelManager.Rules)
+            {
+                if (!r.IsEnabled)
+                {
+                    continue;
+                }
+
+                switch (r.TargetType)
+                {
+                    case RuleTargetTypeIpcEntity.Direct:
+                        directCount++;
+                        break;
+                    case RuleTargetTypeIpcEntity.Block:
+                        blockCount++;
+                        break;
+                    default:
+                        string tid = string.IsNullOrWhiteSpace(r.TargetTunnelId) ? "T1" : r.TargetTunnelId.Trim().ToUpperInvariant();
+                        ruleCountsBySlot[tid] = ruleCountsBySlot.GetValueOrDefault(tid, 0) + 1;
+                        break;
+                }
+            }
+
             foreach (MultiTunnelSlotConfig slot in _multiTunnelManager.Slots)
             {
                 string countryDisplay = string.IsNullOrWhiteSpace(slot.CountryCode)
@@ -786,6 +1140,7 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
                     SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
                     CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
                     SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName} • {slot.ClientIpv4}",
+                    RuleCount = ruleCountsBySlot.GetValueOrDefault(slot.SlotId, 0),
                 });
 
                 SlotPickerTargets.Add(slot.SlotId);
@@ -795,6 +1150,75 @@ public partial class MultiTunnelPageViewModel : SettingsPageViewModelBase,
             {
                 SelectedEditSlotId = "NEW";
             }
+
+            List<string> validPresetTargets = _multiTunnelManager.Slots.Select(s => s.SlotId).ToList();
+            validPresetTargets.Add("DIRECT");
+            validPresetTargets.Add("BLOCK");
+            validPresetTargets.Add("PRESET_DEFAULT");
+
+            if (string.IsNullOrWhiteSpace(SelectedPresetTargetKey) ||
+                !validPresetTargets.Contains(SelectedPresetTargetKey, StringComparer.OrdinalIgnoreCase))
+            {
+                SelectedPresetTargetKey = _multiTunnelManager.Slots.FirstOrDefault()?.SlotId ?? "T1";
+            }
+
+            PresetTargetOptions.Clear();
+            foreach (MultiTunnelSlotConfig slot in _multiTunnelManager.Slots)
+            {
+                string colorHex = MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId);
+                string countryCode = string.IsNullOrWhiteSpace(slot.CountryCode) ? "Auto" : slot.CountryCode;
+                PresetTargetOptions.Add(new PresetTargetOption
+                {
+                    Key = slot.SlotId,
+                    ShortLabel = GetShortRouteLabel(slot.SlotId),
+                    DisplayLabel = $"{slot.SlotId} · {countryCode}",
+                    RuleCountText = ruleCountsBySlot.GetValueOrDefault(slot.SlotId, 0).ToString(),
+                    ColorHex = colorHex,
+                    DotBrush = SlotColorBrushHelper.ToBrush(colorHex),
+                    IsSelected = string.Equals(SelectedPresetTargetKey, slot.SlotId, StringComparison.OrdinalIgnoreCase),
+                });
+            }
+
+            PresetTargetOptions.Add(new PresetTargetOption
+            {
+                Key = "DIRECT",
+                ShortLabel = "Direct",
+                DisplayLabel = "Direct",
+                RuleCountText = directCount.ToString(),
+                ColorHex = "#38BDF8",
+                DotBrush = SlotColorBrushHelper.ToBrush("#38BDF8"),
+                IsSelected = string.Equals(SelectedPresetTargetKey, "DIRECT", StringComparison.OrdinalIgnoreCase),
+            });
+
+            PresetTargetOptions.Add(new PresetTargetOption
+            {
+                Key = "BLOCK",
+                ShortLabel = "Block",
+                DisplayLabel = "Block",
+                RuleCountText = blockCount.ToString(),
+                ColorHex = "#F7607B",
+                DotBrush = SlotColorBrushHelper.ToBrush("#F7607B"),
+                IsSelected = string.Equals(SelectedPresetTargetKey, "BLOCK", StringComparison.OrdinalIgnoreCase),
+            });
+
+            PresetTargetOptions.Add(new PresetTargetOption
+            {
+                Key = "PRESET_DEFAULT",
+                ShortLabel = "Auto",
+                DisplayLabel = "Preset Default",
+                RuleCountText = string.Empty,
+                ColorHex = "#8A6EFF",
+                DotBrush = SlotColorBrushHelper.ToBrush("#8A6EFF"),
+                IsSelected = string.Equals(SelectedPresetTargetKey, "PRESET_DEFAULT", StringComparison.OrdinalIgnoreCase),
+            });
+
+            RefreshPresetAssignmentStates();
+            OnPropertyChanged(nameof(SelectedTargetShortLabel));
+            OnPropertyChanged(nameof(AssignSelectedButtonText));
+            OnPropertyChanged(nameof(ReplaceTargetButtonText));
+            OnPropertyChanged(nameof(IsPresetFallbackAllowed));
+            OnPropertyChanged(nameof(IsPresetFallbackTunnel));
+            OnPropertyChanged(nameof(IsSpecificPresetTargetSelected));
 
             Rules.Clear();
             foreach (MultiTunnelRuleConfig rule in _multiTunnelManager.Rules)

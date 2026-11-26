@@ -67,6 +67,39 @@ public sealed partial class MultiTunnelPageView : IContextAware
         }
     }
 
+    private void OnAssignTemplatesToSlotClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            ViewModel.SelectPresetTarget(slotId);
+            PresetSectionBorder.StartBringIntoView();
+        }
+    }
+
+    private void OnSelectPresetTargetClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string targetKey })
+        {
+            ViewModel.SelectPresetTarget(targetKey);
+        }
+    }
+
+    private async void OnQuickAssignPresetClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string presetId })
+        {
+            await ViewModel.QuickTogglePresetForTargetAsync(presetId);
+        }
+    }
+
+    private void OnPickDiscoveredAppClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string executablePath })
+        {
+            ViewModel.PickDiscoveredApp(executablePath);
+        }
+    }
+
     private async void OnRuleEnabledClick(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox { Tag: Guid ruleId } cb)

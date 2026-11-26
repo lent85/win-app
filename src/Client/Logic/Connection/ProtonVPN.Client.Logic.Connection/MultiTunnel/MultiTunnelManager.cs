@@ -653,8 +653,40 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
             {
                 _config.Rules = generated;
             }
+            else if (mode == RoutingPresetApplyMode.ReplaceTarget)
+            {
+                _config.Rules.RemoveAll(r =>
+                {
+                    if (presetList.Any(p => p.MatchesRule(r)))
+                    {
+                        return true;
+                    }
+
+                    if (targetTypeOverride.HasValue)
+                    {
+                        if (r.TargetType != targetTypeOverride.Value)
+                        {
+                            return false;
+                        }
+
+                        return targetTypeOverride.Value != RuleTargetTypeIpcEntity.Tunnel ||
+                               string.Equals(
+                                   r.TargetTunnelId,
+                                   generated[0].TargetTunnelId,
+                                   StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    return generated.Any(g =>
+                        r.TargetType == g.TargetType &&
+                        (g.TargetType != RuleTargetTypeIpcEntity.Tunnel ||
+                         string.Equals(r.TargetTunnelId, g.TargetTunnelId, StringComparison.OrdinalIgnoreCase)));
+                });
+
+                _config.Rules.InsertRange(0, generated);
+            }
             else
             {
+                _config.Rules.RemoveAll(r => presetList.Any(p => p.MatchesRule(r)));
                 _config.Rules.InsertRange(0, generated);
             }
 
@@ -665,6 +697,33 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         NotifyChanged();
         await SyncPolicyToServiceAsync();
         return appliedCount;
+    }
+
+    public async Task<bool> RemoveRoutingPresetAsync(RoutingRulePreset preset)
+    {
+        if (preset is null)
+        {
+            return false;
+        }
+
+        int removedCount;
+        lock (_lock)
+        {
+            removedCount = _config.Rules.RemoveAll(r => preset.MatchesRule(r));
+            if (removedCount > 0)
+            {
+                NormalizeAndPersistLocked();
+            }
+        }
+
+        if (removedCount > 0)
+        {
+            NotifyChanged();
+            await SyncPolicyToServiceAsync();
+            return true;
+        }
+
+        return false;
     }
 
     public async Task UpdateRuleAsync(MultiTunnelRuleConfig rule)

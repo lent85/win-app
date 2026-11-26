@@ -44,6 +44,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private readonly IRoutingTableHelper? _routingTableHelper;
 
     public bool EnableBackgroundDnsResolution { get; set; } = true;
+    public bool EnableAppProcessWatcher { get; set; } = true;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, TunnelSlotStateIpcEntity> _configuredSlotMeta = new(StringComparer.OrdinalIgnoreCase);
@@ -53,6 +54,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private VpnProtocol _lastProtocol = VpnProtocol.WireGuardUdp;
     private string? _lastAppliedFingerprint;
     private CancellationTokenSource? _dnsResolveCts;
+    private CancellationTokenSource? _appWatchCts;
 
     public bool IsEnabled
     {
@@ -199,10 +201,12 @@ public sealed class MultiTunnelService : IMultiTunnelService
             {
                 ReapplyWfpPolicySafe();
                 ScheduleDomainResolution(rules);
+                ScheduleAppProcessWatcher(rules);
             }
             else
             {
                 CancelBackgroundDnsResolution();
+                CancelAppProcessWatcher();
                 DisableWfpLocked();
             }
         }
@@ -239,8 +243,10 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
             if (_isEnabled)
             {
+                IReadOnlyList<SelectiveRoutingRule> rules = _orchestrator.GetPriorityRules();
                 ReapplyWfpPolicySafe();
-                ScheduleDomainResolution(_orchestrator.GetPriorityRules());
+                ScheduleDomainResolution(rules);
+                ScheduleAppProcessWatcher(rules);
             }
         }
     }
@@ -265,6 +271,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
             else
             {
                 CancelBackgroundDnsResolution();
+                CancelAppProcessWatcher();
                 DisableWfpLocked();
             }
         }
@@ -284,8 +291,10 @@ public sealed class MultiTunnelService : IMultiTunnelService
             {
                 if (_isEnabled)
                 {
+                    IReadOnlyList<SelectiveRoutingRule> rules = _orchestrator.GetPriorityRules();
                     ReapplyWfpPolicySafe();
-                    ScheduleDomainResolution(_orchestrator.GetPriorityRules());
+                    ScheduleDomainResolution(rules);
+                    ScheduleAppProcessWatcher(rules);
                 }
             }
         }
@@ -310,6 +319,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
             else
             {
                 CancelBackgroundDnsResolution();
+                CancelAppProcessWatcher();
                 DisableWfpLocked();
             }
         }
@@ -345,6 +355,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
         lock (_lock)
         {
             CancelBackgroundDnsResolution();
+            CancelAppProcessWatcher();
             DisableWfpLocked();
         }
     }
@@ -672,6 +683,97 @@ public sealed class MultiTunnelService : IMultiTunnelService
         }
     }
 
+    private void ScheduleAppProcessWatcher(IReadOnlyList<SelectiveRoutingRule> rules)
+    {
+        if (!EnableAppProcessWatcher)
+        {
+            return;
+        }
+
+        List<SelectiveRoutingRule> appRules = rules
+            .Where(r => r.IsEnabled && r.HasAppCondition && !string.IsNullOrWhiteSpace(r.AppPattern))
+            .OrderBy(r => r.PriorityOrder)
+            .ToList();
+
+        if (appRules.Count == 0)
+        {
+            CancelAppProcessWatcher();
+            return;
+        }
+
+        CancelAppProcessWatcher();
+        CancellationTokenSource cts = new();
+        _appWatchCts = cts;
+        CancellationToken ct = cts.Token;
+        string initialResolvedSignature = ComputeResolvedAppsSignature(appRules);
+
+        _ = Task.Run(async () =>
+        {
+            string previousSignature = initialResolvedSignature;
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                    string currentSignature = ComputeResolvedAppsSignature(appRules);
+                    if (!string.Equals(currentSignature, previousSignature, StringComparison.Ordinal))
+                    {
+                        previousSignature = currentSignature;
+                        lock (_lock)
+                        {
+                            if (_isEnabled && _orchestrator.GetSlotStates().Values.Any(s => s.IsConnected))
+                            {
+                                _lastAppliedFingerprint = null;
+                                ReapplyWfpPolicySafe();
+                            }
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug<SplitTunnelLog>($"MultiTunnelService: App process watcher error: {ex.Message}");
+            }
+        }, ct);
+    }
+
+    private void CancelAppProcessWatcher()
+    {
+        try
+        {
+            _appWatchCts?.Cancel();
+            _appWatchCts?.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _appWatchCts = null;
+        }
+    }
+
+    private static string ComputeResolvedAppsSignature(IEnumerable<SelectiveRoutingRule> appRules)
+    {
+        List<string> tokens = [];
+        foreach (SelectiveRoutingRule rule in appRules)
+        {
+            foreach (string raw in (rule.AppPattern ?? string.Empty).Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                foreach (string resolved in MultiTunnelWfpManager.ResolveAppExecutablePaths(raw))
+                {
+                    tokens.Add(resolved);
+                }
+            }
+        }
+
+        tokens.Sort(StringComparer.OrdinalIgnoreCase);
+        return string.Join("|", tokens.Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
     private static string BuildPolicyFingerprint(
         IReadOnlyDictionary<string, TunnelSlotRuntimeState> slots,
         IReadOnlyList<SelectiveRoutingRule> rules,
@@ -693,7 +795,12 @@ public sealed class MultiTunnelService : IMultiTunnelService
               .Append(s.InterfaceIndex).Append(';');
         }
 
-        foreach (SelectiveRoutingRule r in rules.Where(x => x.IsEnabled && x.HasAnyCondition).OrderBy(x => x.PriorityOrder))
+        List<SelectiveRoutingRule> enabledRules = rules
+            .Where(x => x.IsEnabled && x.HasAnyCondition)
+            .OrderBy(x => x.PriorityOrder)
+            .ToList();
+
+        foreach (SelectiveRoutingRule r in enabledRules)
         {
             sb.Append(r.Id).Append('#').Append(r.PriorityOrder).Append(':')
               .Append(r.AppPattern).Append('|')
@@ -713,6 +820,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
             sb.Append(';');
         }
 
+        sb.Append("RESOLVED_APPS=").Append(ComputeResolvedAppsSignature(enabledRules.Where(r => r.HasAppCondition)));
         return sb.ToString();
     }
 

@@ -60,6 +60,14 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
         }
     }
 
+    private void OnSlotTemplatesClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            ViewModel.OpenTemplatesForSlot(slotId);
+        }
+    }
+
     private async void OnRemoveSlotClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string slotId })

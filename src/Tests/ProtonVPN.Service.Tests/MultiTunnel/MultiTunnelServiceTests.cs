@@ -79,7 +79,7 @@ public class MultiTunnelServiceTests
         _networkInterfaces.GetBestInterfaceExcludingHardwareId("ProtonVPN-Tun").Returns(nic);
     }
 
-    private MultiTunnelService CreateService(bool enableBackgroundDns = false) => new(
+    private MultiTunnelService CreateService(bool enableBackgroundDns = false, bool enableAppWatcher = false) => new(
         _logger,
         _orchestrator,
         _wfpManager,
@@ -90,6 +90,7 @@ public class MultiTunnelServiceTests
         _serviceSettings)
     {
         EnableBackgroundDnsResolution = enableBackgroundDns,
+        EnableAppProcessWatcher = enableAppWatcher,
     };
 
     [TestMethod]
@@ -265,6 +266,7 @@ public class MultiTunnelServiceTests
             routingTableHelper: routingHelper)
         {
             EnableBackgroundDnsResolution = false,
+            EnableAppProcessWatcher = false,
         };
 
         service.OnVpnConnected(new VpnState(
@@ -407,6 +409,43 @@ public class MultiTunnelServiceTests
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public void MultiTunnelWfpManager_ComputeNativeWfpWeight_AlwaysFitsValidWfpUint8Range()
+    {
+        MultiTunnelWfpManager.ComputeNativeWfpWeight(1).Should().Be(14u);
+        MultiTunnelWfpManager.ComputeNativeWfpWeight(2).Should().Be(13u);
+        MultiTunnelWfpManager.ComputeNativeWfpWeight(6).Should().Be(9u);
+        MultiTunnelWfpManager.ComputeNativeWfpWeight(13).Should().Be(2u);
+        MultiTunnelWfpManager.ComputeNativeWfpWeight(50).Should().Be(2u);
+        for (int i = 1; i <= 25; i++)
+        {
+            MultiTunnelWfpManager.ComputeNativeWfpWeight(i).Should().BeInRange(2u, 14u);
+        }
+    }
+
+    [TestMethod]
+    public void MultiTunnelWfpManager_ResolveAppExecutablePaths_FindsOperaVersionedSubfolderExecutable()
+    {
+        string tempUserRoot = Path.Combine(Path.GetTempPath(), $"pvpn-opera-{Guid.NewGuid():N}");
+        string operaVerDir = Path.Combine(tempUserRoot, "AppData", "Local", "Programs", "Opera", "116.0.5366.127");
+        string operaExe = Path.Combine(operaVerDir, "opera.exe");
+
+        try
+        {
+            Directory.CreateDirectory(operaVerDir);
+            File.WriteAllBytes(operaExe, [0x4D, 0x5A]);
+
+            IReadOnlyList<string> resolved = MultiTunnelWfpManager.ResolveAppExecutablePaths("opera", [tempUserRoot]);
+
+            resolved.Should().Contain(operaExe);
+            MultiTunnelWfpManager.ResolveAppExecutablePaths(operaExe).Should().ContainSingle().Which.Should().Be(operaExe);
+        }
+        finally
+        {
+            try { Directory.Delete(tempUserRoot, recursive: true); } catch { }
         }
     }
 }
