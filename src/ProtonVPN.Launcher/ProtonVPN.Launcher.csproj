@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows10.0.22621.0</TargetFramework>
 		<Nullable>enable</Nullable>
@@ -23,9 +23,5 @@
         <Compile Include="..\AppInstanceConstants.cs">
             <Link>Properties\AppInstanceConstants.cs</Link>
         </Compile>
-    </ItemGroup>
-    <ItemGroup>
-      <PackageReference Include="System.Formats.Asn1" />
-      <PackageReference Include="System.Text.Json" />
     </ItemGroup>
 </Project>

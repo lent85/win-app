@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows10.0.22621.0</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -907,9 +907,7 @@
         <PackageReference Include="Microsoft.Graphics.Win2D" />
         <PackageReference Include="Microsoft.WindowsAppSDK" />
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-		<PackageReference Include="Mapsui.WinUI" />
+<PackageReference Include="Mapsui.WinUI" />
 		<PackageReference Include="Vanara.PInvoke.SHCore" />
 		<PackageReference Include="Vanara.PInvoke.Shell32" />
 		<PackageReference Include="Vanara.PInvoke.User32" />

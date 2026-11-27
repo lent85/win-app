@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -8,10 +8,6 @@
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     </PropertyGroup>
-    <ItemGroup>
-      <PackageReference Include="System.Formats.Asn1" />
-      <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\..\..\Api\ProtonVPN.Api.Contracts\ProtonVPN.Api.Contracts.csproj" />
       <ProjectReference Include="..\..\..\Common\ProtonVPN.Client.Common\ProtonVPN.Client.Common.csproj" />

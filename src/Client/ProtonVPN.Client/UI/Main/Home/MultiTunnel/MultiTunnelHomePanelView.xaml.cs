@@ -17,6 +17,35 @@ namespace ProtonVPN.Client.UI.Main.Home.MultiTunnel;
 
 public sealed partial class MultiTunnelHomePanelView : IContextAware
 {
+    private const double CompactTableWidthThreshold = 700;
+    private const double IconOnlyButtonsWidthThreshold = 560;
+
+    public static readonly DependencyProperty IsMergedTableLayoutProperty =
+        DependencyProperty.Register(
+            nameof(IsMergedTableLayout),
+            typeof(bool),
+            typeof(MultiTunnelHomePanelView),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty IsIconOnlyButtonsProperty =
+        DependencyProperty.Register(
+            nameof(IsIconOnlyButtons),
+            typeof(bool),
+            typeof(MultiTunnelHomePanelView),
+            new PropertyMetadata(false));
+
+    public bool IsMergedTableLayout
+    {
+        get => (bool)GetValue(IsMergedTableLayoutProperty);
+        private set => SetValue(IsMergedTableLayoutProperty, value);
+    }
+
+    public bool IsIconOnlyButtons
+    {
+        get => (bool)GetValue(IsIconOnlyButtonsProperty);
+        private set => SetValue(IsIconOnlyButtonsProperty, value);
+    }
+
     public MultiTunnelHomePanelViewModel ViewModel { get; }
 
     public MultiTunnelHomePanelView()
@@ -27,6 +56,7 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        SizeChanged += OnSizeChanged;
     }
 
     public object GetContext()
@@ -37,11 +67,46 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ViewModel.Activate();
+        UpdateResponsiveState(ActualWidth);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.Deactivate();
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateResponsiveState(e.NewSize.Width);
+    }
+
+    private void UpdateResponsiveState(double width)
+    {
+        if (width <= 0)
+        {
+            return;
+        }
+
+        bool isMerged = width < CompactTableWidthThreshold;
+        bool isIconOnly = width < IconOnlyButtonsWidthThreshold;
+
+        if (IsMergedTableLayout != isMerged)
+        {
+            IsMergedTableLayout = isMerged;
+        }
+
+        if (IsIconOnlyButtons != isIconOnly)
+        {
+            IsIconOnlyButtons = isIconOnly;
+        }
+
+        string stateName = isIconOnly
+            ? "NarrowIconOnlyState"
+            : isMerged
+                ? "CompactTableState"
+                : "WideState";
+
+        VisualStateManager.GoToState(this, stateName, false);
     }
 
     private static async void RunSafeAsync(Func<Task> action)

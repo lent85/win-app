@@ -19,9 +19,7 @@
         <PackageReference Include="MSTest.TestAdapter" />
         <PackageReference Include="MSTest.TestFramework" />
         <PackageReference Include="NSubstitute" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\ProtonVPN.Client.Logic.Announcements.Contracts\ProtonVPN.Client.Logic.Announcements.Contracts.csproj" />
       <ProjectReference Include="..\ProtonVPN.Client.Logic.Announcements.EntityMapping\ProtonVPN.Client.Logic.Announcements.EntityMapping.csproj" />

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -15,11 +15,9 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="protobuf-net.Grpc" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Private.ServiceModel" />
+<PackageReference Include="System.Private.ServiceModel" />
         <PackageReference Include="System.Security.Cryptography.Pkcs" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\ProtonVPN.Common.Legacy\ProtonVPN.Common.Legacy.csproj" />
     </ItemGroup>

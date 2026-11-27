@@ -170,6 +170,9 @@ try {
                 -p:Platform=$Platform `
                 -p:AppendRuntimeIdentifierToOutputPath=true `
                 --self-contained true `
+                --disable-build-servers `
+                -nr:false `
+                -tl:off `
                 -o $PublishDir
             if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Proj" }
         }
@@ -261,7 +264,9 @@ try {
                 Write-Host "==> Testing $Tp..."
                 # Serialize MSBuild (-m:1) because -o sets OutputPath globally across all referenced projects
                 # (which have PreserveCompilationContext=true), causing parallel CopyRefAssemblies/IncrementalClean file-lock races.
-                dotnet test $TpPath -c $Configuration -o $TestOutDir -m:1 -p:BuildInParallel=false
+                # Disable build-server/node reuse (--disable-build-servers, -nr:false) and Terminal Logger (-tl:off)
+                # to isolate from IDE LanguageServer builds and surface full MSBuild diagnostics on failure.
+                dotnet test $TpPath -c $Configuration -o $TestOutDir --disable-build-servers -m:1 -p:BuildInParallel=false -nr:false -tl:off
                 if ($LASTEXITCODE -ne 0) { throw "dotnet test failed for $Tp" }
             }
         }

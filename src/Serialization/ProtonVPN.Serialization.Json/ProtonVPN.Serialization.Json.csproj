@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -13,9 +13,7 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Newtonsoft.Json" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\ProtonVPN.Serialization.Contracts\ProtonVPN.Serialization.Contracts.csproj" />
     </ItemGroup>

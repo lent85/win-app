@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -12,9 +12,7 @@
         <Compile Include="..\..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-        <PackageReference Include="TaskScheduler" />
+<PackageReference Include="TaskScheduler" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\..\Logging\ProtonVPN.Logging.Contracts\ProtonVPN.Logging.Contracts.csproj" />

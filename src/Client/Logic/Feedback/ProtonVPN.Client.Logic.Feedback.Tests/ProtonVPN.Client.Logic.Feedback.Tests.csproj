@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -46,9 +46,7 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="NSubstitute" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\..\..\Tests\ProtonVPN.Tests.Common\ProtonVPN.Tests.Common.csproj" />
         <ProjectReference Include="..\ProtonVPN.Client.Logic.Feedback.Contracts\ProtonVPN.Client.Logic.Feedback.Contracts.csproj" />

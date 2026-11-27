@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -23,7 +23,5 @@
         <PackageReference Include="ARSoft.Tools.Net" />
         <PackageReference Include="BouncyCastle.Cryptography" />
         <PackageReference Include="DnsClient" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
 </Project>

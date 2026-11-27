@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>$(NetVersion)-windows10.0.22621.0</TargetFramework>
     <OutputType>Library</OutputType>
@@ -30,8 +30,7 @@
     <PackageReference Include="MSTest.TestFramework" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="RichardSzalay.MockHttp" />
-    <PackageReference Include="System.Threading.Tasks.Extensions" />
-  </ItemGroup>
+</ItemGroup>
   <ItemGroup>
     <None Update="TestData\IPv6FragmentsResponseMock.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

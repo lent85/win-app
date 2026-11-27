@@ -17,556 +17,1089 @@ the Free Software Foundation, either version 3 of the License, or
              xmlns:custom="using:ProtonVPN.Client.Common.UI.Controls.Custom"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Name="Self"
              x:DefaultBindMode="OneWay"
              mc:Ignorable="d">
 
-    <ContentControl Margin="0,8,0,0"
-                    Padding="14,10"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Stretch"
-                    AutomationProperties.AutomationId="MultiTunnelHomePanel"
-                    IsTabStop="False"
-                    Style="{StaticResource TranslucentPaneContentControlStyle}"
-                    Visibility="{x:Bind ViewModel.IsMultiTunnelEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+    <Grid>
+        <ContentControl Margin="0,8,0,0"
+                        Padding="14,10"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.AutomationId="MultiTunnelHomePanel"
+                        IsTabStop="False"
+                        Style="{StaticResource TranslucentPaneContentControlStyle}"
+                        Visibility="{x:Bind ViewModel.IsMultiTunnelEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
 
-        <StackPanel Spacing="10">
+            <StackPanel Spacing="10">
 
-            <!-- Header Bar -->
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0"
-                            VerticalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="8">
-                    <Ellipse Width="8"
-                             Height="8"
-                             VerticalAlignment="Center"
-                             Fill="{ThemeResource SignalSuccessColorBrush}" />
-                    <FontIcon VerticalAlignment="Center"
-                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="16"
-                              Glyph="&#xE8AB;" />
-                    <TextBlock VerticalAlignment="Center"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"
-                               Text="Multi-Tunnel" />
-                    <Border Padding="8,2"
-                            VerticalAlignment="Center"
-                            Background="{ThemeResource InteractionDefaultColorBrush}"
-                            CornerRadius="10">
-                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Text="{x:Bind ViewModel.SummaryText}" />
-                    </Border>
-                </StackPanel>
-
-                <Button Grid.Column="1"
-                        Padding="10,4"
-                        Command="{x:Bind ViewModel.OpenFullConfigCommand, Mode=OneTime}"
-                        Content="Full Config"
-                        Style="{StaticResource SecondaryButtonStyle}" />
-
-                <ToggleSwitch Grid.Column="2"
-                              MinWidth="0"
-                              VerticalAlignment="Center"
-                              AutomationProperties.AutomationId="MultiTunnelHomeToggleSwitch"
-                              IsOn="{x:Bind ViewModel.IsMultiTunnelEnabled, Mode=TwoWay}"
-                              Style="{StaticResource ToggleSwitchStyle}" />
-
-                <Button Grid.Column="3"
-                        Padding="8,6"
-                        Command="{x:Bind ViewModel.ToggleExpandedCommand, Mode=OneTime}"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        ToolTipService.ToolTip="Collapse / Expand">
-                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="12"
-                              Glyph="{x:Bind ViewModel.ExpandButtonGlyph}" />
-                </Button>
-            </Grid>
-
-            <!-- Collapsible Interactive Body -->
-            <StackPanel Spacing="10"
-                        Visibility="{x:Bind ViewModel.IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
-
-                <!-- Navigation SelectorBar & Default Unmatched Routing -->
-                <Grid ColumnSpacing="10">
+                <!-- Header Bar -->
+                <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <SelectorBar Grid.Column="0"
-                                 VerticalAlignment="Center">
-                        <SelectorBarItem IsSelected="{x:Bind ViewModel.IsPipelinesTabSelected, Mode=TwoWay}"
-                                         Text="{x:Bind ViewModel.PipelinesTabHeader}" />
-                        <SelectorBarItem IsSelected="{x:Bind ViewModel.IsRulesTabSelected, Mode=TwoWay}"
-                                         Text="{x:Bind ViewModel.RulesTabHeader}" />
-                        <SelectorBarItem IsSelected="{x:Bind ViewModel.IsSimulatorTabSelected, Mode=TwoWay}"
-                                         Text="Test Route" />
-                    </SelectorBar>
-
-                    <StackPanel Grid.Column="1"
+                    <Grid Grid.Column="0"
+                          VerticalAlignment="Center"
+                          ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Grid.Column="0"
+                                 Width="8"
+                                 Height="8"
+                                 VerticalAlignment="Center"
+                                 Fill="{ThemeResource SignalSuccessColorBrush}" />
+                        <FontIcon Grid.Column="1"
+                                  VerticalAlignment="Center"
+                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="16"
+                                  Glyph="&#xE8AB;" />
+                        <TextBlock Grid.Column="2"
+                                   VerticalAlignment="Center"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Text="Multi-Tunnel" />
+                        <Border x:Name="SummaryBadge"
+                                Grid.Column="3"
+                                Padding="8,2"
+                                HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Orientation="Horizontal"
-                                Spacing="6">
-                        <TextBlock VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextWeakColorBrush}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Text="Default:" />
-                        <ComboBox Width="98"
-                                  ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedDefaultTargetType, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}" />
-                        <ComboBox Width="70"
-                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedDefaultTunnelId, Mode=TwoWay}"
-                                  Style="{StaticResource ComboBoxStyle}"
-                                  Visibility="{x:Bind ViewModel.IsDefaultTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    </StackPanel>
+                                Background="{ThemeResource InteractionDefaultColorBrush}"
+                                CornerRadius="10">
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="{x:Bind ViewModel.SummaryText}"
+                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap" />
+                        </Border>
+                    </Grid>
+
+                    <Button x:Name="FullConfigButton"
+                            Grid.Column="1"
+                            Padding="10,4"
+                            Command="{x:Bind ViewModel.OpenFullConfigCommand, Mode=OneTime}"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            ToolTipService.ToolTip="Full Config">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="6">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="12"
+                                      Glyph="&#xE713;" />
+                            <TextBlock x:Name="FullConfigButtonLabel"
+                                       Text="Full Config" />
+                        </StackPanel>
+                    </Button>
+
+                    <ToggleSwitch Grid.Column="2"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.AutomationId="MultiTunnelHomeToggleSwitch"
+                                  IsOn="{x:Bind ViewModel.IsMultiTunnelEnabled, Mode=TwoWay}"
+                                  Style="{StaticResource ToggleSwitchStyle}" />
+
+                    <Button Grid.Column="3"
+                            Padding="8,6"
+                            Command="{x:Bind ViewModel.ToggleExpandedCommand, Mode=OneTime}"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            ToolTipService.ToolTip="Collapse / Expand">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  FontSize="12"
+                                  Glyph="{x:Bind ViewModel.ExpandButtonGlyph}" />
+                    </Button>
                 </Grid>
 
-                <!-- Rule Conflict Warning Banner -->
-                <Border Padding="10,6"
-                        Background="{ThemeResource BackgroundWeakColorBrush}"
-                        BorderBrush="{ThemeResource SignalWarningColorBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Visibility="{x:Bind ViewModel.HasConflicts, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <StackPanel Spacing="2">
-                        <TextBlock Foreground="{ThemeResource SignalWarningColorBrush}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Text="Rule ordering conflict detected:" />
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.ConflictMessages}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Text="{x:Bind}"
-                                               TextWrapping="Wrap" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
+                <!-- Collapsible Interactive Body -->
+                <StackPanel Spacing="10"
+                            Visibility="{x:Bind ViewModel.IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
 
-                <ScrollViewer MaxHeight="260"
-                              Style="{StaticResource SmallOffsetScrollViewer}"
-                              VerticalScrollBarVisibility="Auto">
-                    <Grid>
+                    <!-- Navigation SelectorBar & Default Unmatched Routing -->
+                    <Grid ColumnSpacing="10"
+                          RowSpacing="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                        <!-- TAB 0: Pipelines (T1 - T5) -->
-                        <StackPanel Spacing="8"
-                                    Visibility="{x:Bind ViewModel.IsPipelinesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <SelectorBar Grid.Row="0"
+                                     Grid.Column="0"
+                                     VerticalAlignment="Center">
+                            <SelectorBarItem IsSelected="{x:Bind ViewModel.IsPipelinesTabSelected, Mode=TwoWay}"
+                                             Text="{x:Bind ViewModel.PipelinesTabHeader}" />
+                            <SelectorBarItem IsSelected="{x:Bind ViewModel.IsRulesTabSelected, Mode=TwoWay}"
+                                             Text="{x:Bind ViewModel.RulesTabHeader}" />
+                            <SelectorBarItem IsSelected="{x:Bind ViewModel.IsSimulatorTabSelected, Mode=TwoWay}"
+                                             Text="Test Route" />
+                        </SelectorBar>
 
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="96" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <ComboBox Grid.Column="0"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.SlotPickerTargets}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedEditSlotId, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-
-                                <ComboBox Grid.Column="1"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.AvailableCountries}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedPickerCountry, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-
-                                <ComboBox Grid.Column="2"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.AvailableServers}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedPickerServer, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-
-                                <Button Grid.Column="3"
-                                        Command="{x:Bind ViewModel.AddOrUpdateSlotCommand, Mode=OneTime}"
-                                        Content="+ Apply"
-                                        Style="{StaticResource PrimaryButtonStyle}" />
-                            </Grid>
-
-                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                        <StackPanel x:Name="DefaultRoutingPanel"
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="6">
+                            <TextBlock VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextWeakColorBrush}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                       Text="{x:Bind ViewModel.SlotPickerStatus}"
-                                       Visibility="{x:Bind ViewModel.HasSlotPickerStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                       Text="Default:" />
+                            <ComboBox Width="98"
+                                      ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedDefaultTargetType, Mode=TwoWay}"
+                                      Style="{StaticResource ComboBoxStyle}" />
+                            <ComboBox Width="70"
+                                      ItemsSource="{x:Bind ViewModel.SlotIdOptions}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedDefaultTunnelId, Mode=TwoWay}"
+                                      Style="{StaticResource ComboBoxStyle}"
+                                      Visibility="{x:Bind ViewModel.IsDefaultTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Grid>
 
-                            <ItemsControl ItemsSource="{x:Bind ViewModel.Slots}">
+                    <!-- Rule Conflict Warning Banner -->
+                    <Border Padding="10,6"
+                            Background="{ThemeResource BackgroundWeakColorBrush}"
+                            BorderBrush="{ThemeResource SignalWarningColorBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Visibility="{x:Bind ViewModel.HasConflicts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Foreground="{ThemeResource SignalWarningColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="Rule ordering conflict detected:" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.ConflictMessages}">
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="conn:MultiTunnelSlotItem">
-                                        <Border Margin="0,3,0,0"
-                                                Padding="10,6"
-                                                Background="{ThemeResource InteractionDefaultColorBrush}"
-                                                BorderBrush="{ThemeResource BorderWeakColorBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="6">
-                                            <Grid ColumnSpacing="6">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="28" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <Grid Grid.Column="0"
-                                                      VerticalAlignment="Center">
-                                                    <Ellipse Width="9"
-                                                             Height="9"
-                                                             Fill="{x:Bind SlotColorBrush}"
-                                                             Opacity="0.35" />
-                                                    <Ellipse Width="9"
-                                                             Height="9"
-                                                             Fill="{x:Bind SlotColorBrush}"
-                                                             Visibility="{x:Bind IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                </Grid>
-
-                                                <TextBlock Grid.Column="1"
-                                                           VerticalAlignment="Center"
-                                                           Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                           Text="{x:Bind SlotId}" />
-
-                                                <custom:SimpleCountryFlag Grid.Column="2"
-                                                                          Width="22"
-                                                                          VerticalAlignment="Center"
-                                                                          CountryCode="{x:Bind CountryCode}"
-                                                                          FlagType="Country" />
-
-                                                <TextBlock Grid.Column="3"
-                                                           VerticalAlignment="Center"
-                                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                                           Text="{x:Bind SlotSummary}"
-                                                           TextTrimming="CharacterEllipsis" />
-
-                                                <TextBlock Grid.Column="4"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{ThemeResource TextWeakColorBrush}"
-                                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                                           Text="{x:Bind StatusText}" />
-
-                                                <Button Grid.Column="5"
-                                                        Padding="6,3"
-                                                        Click="OnCopySlotPortClick"
-                                                        Content="{x:Bind PortForwardingBadgeText}"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}"
-                                                        ToolTipService.ToolTip="{x:Bind PortForwardingTooltip}"
-                                                        Visibility="{x:Bind ShowPortForwardingBadge, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                                <Button Grid.Column="6"
-                                                        Padding="6,3"
-                                                        Click="OnToggleSlotPortForwardingClick"
-                                                        Content="{x:Bind PortForwardingToggleText}"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}"
-                                                        ToolTipService.ToolTip="Toggle Port Forwarding for this tunnel" />
-
-                                                <Button Grid.Column="7"
-                                                        Padding="8,3"
-                                                        Click="OnSlotTemplatesClick"
-                                                        Content="{x:Bind RuleCountBadge}"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}"
-                                                        ToolTipService.ToolTip="Assign templates &amp; rules to this tunnel" />
-
-                                                <Button Grid.Column="8"
-                                                        Padding="8,3"
-                                                        Click="OnConnectSlotClick"
-                                                        Content="{x:Bind ConnectButtonText}"
-                                                        IsEnabled="{x:Bind CanToggleConnection}"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}" />
-
-                                                <Button Grid.Column="9"
-                                                        Padding="8,3"
-                                                        Click="OnEditSlotClick"
-                                                        Content="Edit"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}" />
-
-                                                <Button Grid.Column="10"
-                                                        Padding="8,3"
-                                                        Click="OnRemoveSlotClick"
-                                                        Content="✕"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind SlotId}"
-                                                        Visibility="{x:Bind CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            </Grid>
-                                        </Border>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind}"
+                                                   TextWrapping="Wrap" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
+                    </Border>
 
-                        <!-- TAB 1: Priority Rules -->
-                        <StackPanel Spacing="8"
-                                    Visibility="{x:Bind ViewModel.IsRulesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ScrollViewer MaxHeight="260"
+                                  Style="{StaticResource SmallOffsetScrollViewer}"
+                                  VerticalScrollBarVisibility="Auto">
+                        <Grid>
 
-                            <!-- 1-Row Service Template Quick-Apply -->
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="136" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                            <!-- TAB 0: Pipelines (T1 - T5) -->
+                            <StackPanel Spacing="8"
+                                        Visibility="{x:Bind ViewModel.IsPipelinesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
 
-                                <ComboBox Grid.Column="0"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.AvailablePresets}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedQuickPreset, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-
-                                <ComboBox Grid.Column="1"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.QuickPresetRouteOptions}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedQuickPresetRoute, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-
-                                <Button Grid.Column="2"
-                                        Command="{x:Bind ViewModel.AddSelectedPresetCommand, Mode=OneTime}"
-                                        Content="+ Assign"
-                                        Style="{StaticResource PrimaryButtonStyle}" />
-
-                                <Button Grid.Column="3"
-                                        Command="{x:Bind ViewModel.ReplaceWithSelectedPresetCommand, Mode=OneTime}"
-                                        Content="Replace Slot"
-                                        Style="{StaticResource SecondaryButtonStyle}" />
-                            </Grid>
-
-                            <!-- 2-Row Inline Quick Rule Editor -->
-                            <StackPanel Spacing="6">
-                                <Grid ColumnSpacing="6">
+                                <Grid ColumnSpacing="6"
+                                      RowSpacing="6">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0"
-                                             PlaceholderText="Rule name"
-                                             Text="{x:Bind ViewModel.QuickRuleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBox Grid.Column="1"
-                                             PlaceholderText="App (opera, chrome or .exe)"
-                                             Text="{x:Bind ViewModel.QuickRuleApp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <Button Grid.Column="2"
-                                            Padding="8,4"
-                                            Command="{x:Bind ViewModel.BrowseQuickRuleAppCommand, Mode=OneTime}"
-                                            Content="📂"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            ToolTipService.ToolTip="Browse executable (.exe)" />
-                                    <TextBox Grid.Column="3"
-                                             PlaceholderText="Domain (*.openai.com)"
-                                             Text="{x:Bind ViewModel.QuickRuleDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
-
-                                <Grid ColumnSpacing="6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0"
-                                             PlaceholderText="IP / CIDR or Port (e.g. 10.0.0.0/8 or 443)"
-                                             Text="{x:Bind ViewModel.QuickRuleIpOrPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <ComboBox Grid.Column="1"
+
+                                    <ComboBox x:Name="SlotPickerComboBox"
+                                              Grid.Row="0"
+                                              Grid.Column="0"
                                               HorizontalAlignment="Stretch"
-                                              ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
-                                              SelectedItem="{x:Bind ViewModel.QuickRuleTargetType, Mode=TwoWay}"
+                                              ItemsSource="{x:Bind ViewModel.SlotPickerTargets}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedEditSlotId, Mode=TwoWay}"
                                               Style="{StaticResource ComboBoxStyle}" />
-                                    <ComboBox Grid.Column="2"
-                                              Width="72"
-                                              ItemsSource="{x:Bind ViewModel.SlotIdOptions}"
-                                              SelectedItem="{x:Bind ViewModel.QuickRuleTunnelId, Mode=TwoWay}"
-                                              Style="{StaticResource ComboBoxStyle}"
-                                              Visibility="{x:Bind ViewModel.IsQuickRuleTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <Button Grid.Column="3"
-                                            Command="{x:Bind ViewModel.SaveQuickRuleCommand, Mode=OneTime}"
-                                            Content="{x:Bind ViewModel.QuickRuleSaveButtonText}"
-                                            Style="{StaticResource PrimaryButtonStyle}" />
-                                    <Button Grid.Column="4"
-                                            Command="{x:Bind ViewModel.CancelEditRuleCommand, Mode=OneTime}"
-                                            Content="Cancel"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Visibility="{x:Bind ViewModel.IsEditingRule, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                    <ComboBox x:Name="CountryPickerComboBox"
+                                              Grid.Row="0"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind ViewModel.AvailableCountries}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedPickerCountry, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" />
+
+                                    <ComboBox x:Name="ServerPickerComboBox"
+                                              Grid.Row="0"
+                                              Grid.Column="2"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind ViewModel.AvailableServers}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedPickerServer, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" />
+
+                                    <Button x:Name="ApplySlotButton"
+                                            Grid.Row="0"
+                                            Grid.Column="3"
+                                            Command="{x:Bind ViewModel.AddOrUpdateSlotCommand, Mode=OneTime}"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            ToolTipService.ToolTip="Apply">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Glyph="&#xE710;" />
+                                            <TextBlock x:Name="ApplySlotButtonLabel"
+                                                       Text="Apply" />
+                                        </StackPanel>
+                                    </Button>
                                 </Grid>
+
+                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Text="{x:Bind ViewModel.SlotPickerStatus}"
+                                           Visibility="{x:Bind ViewModel.HasSlotPickerStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.Slots}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="conn:MultiTunnelSlotItem">
+                                            <Border Margin="0,3,0,0"
+                                                    Padding="10,6"
+                                                    Background="{ThemeResource InteractionDefaultColorBrush}"
+                                                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <Grid>
+                                                    <!-- Wide Single-Row Layout -->
+                                                    <Grid ColumnSpacing="6"
+                                                          Visibility="{Binding IsMergedTableLayout, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="28" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <Grid Grid.Column="0"
+                                                              VerticalAlignment="Center">
+                                                            <Ellipse Width="9"
+                                                                     Height="9"
+                                                                     Fill="{x:Bind SlotColorBrush}"
+                                                                     Opacity="0.35" />
+                                                            <Ellipse Width="9"
+                                                                     Height="9"
+                                                                     Fill="{x:Bind SlotColorBrush}"
+                                                                     Visibility="{x:Bind IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                        </Grid>
+
+                                                        <TextBlock Grid.Column="1"
+                                                                   VerticalAlignment="Center"
+                                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                   Text="{x:Bind SlotId}" />
+
+                                                        <custom:SimpleCountryFlag Grid.Column="2"
+                                                                                  Width="22"
+                                                                                  VerticalAlignment="Center"
+                                                                                  CountryCode="{x:Bind CountryCode}"
+                                                                                  FlagType="Country" />
+
+                                                        <TextBlock Grid.Column="3"
+                                                                   VerticalAlignment="Center"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Text="{x:Bind SlotSummary}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   TextWrapping="NoWrap" />
+
+                                                        <TextBlock Grid.Column="4"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                                   Text="{x:Bind StatusText}" />
+
+                                                        <Button Grid.Column="5"
+                                                                Padding="6,3"
+                                                                Click="OnCopySlotPortClick"
+                                                                Content="{x:Bind PortForwardingBadgeText}"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}"
+                                                                ToolTipService.ToolTip="{x:Bind PortForwardingTooltip}"
+                                                                Visibility="{x:Bind ShowPortForwardingBadge, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                        <Button Grid.Column="6"
+                                                                Padding="6,3"
+                                                                Click="OnToggleSlotPortForwardingClick"
+                                                                Content="{x:Bind PortForwardingToggleText}"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}"
+                                                                ToolTipService.ToolTip="Toggle Port Forwarding for this tunnel" />
+
+                                                        <Button Grid.Column="7"
+                                                                Padding="8,3"
+                                                                Click="OnSlotTemplatesClick"
+                                                                Content="{x:Bind RuleCountBadge}"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}"
+                                                                ToolTipService.ToolTip="Assign templates &amp; rules to this tunnel" />
+
+                                                        <Button Grid.Column="8"
+                                                                Padding="8,3"
+                                                                Click="OnConnectSlotClick"
+                                                                Content="{x:Bind ConnectButtonText}"
+                                                                IsEnabled="{x:Bind CanToggleConnection}"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}" />
+
+                                                        <Button Grid.Column="9"
+                                                                Padding="8,3"
+                                                                Click="OnEditSlotClick"
+                                                                Content="Edit"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}" />
+
+                                                        <Button Grid.Column="10"
+                                                                Padding="8,3"
+                                                                Click="OnRemoveSlotClick"
+                                                                Content="✕"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind SlotId}"
+                                                                Visibility="{x:Bind CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    </Grid>
+
+                                                    <!-- Compact Merged-Column Layout (2 Rows) -->
+                                                    <Grid RowSpacing="6"
+                                                          Visibility="{Binding IsMergedTableLayout, ElementName=Self, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Row 0: Tunnel identity + merged server summary + status -->
+                                                        <Grid Grid.Row="0"
+                                                              ColumnSpacing="6">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="26" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Grid Grid.Column="0"
+                                                                  VerticalAlignment="Center">
+                                                                <Ellipse Width="9"
+                                                                         Height="9"
+                                                                         Fill="{x:Bind SlotColorBrush}"
+                                                                         Opacity="0.35" />
+                                                                <Ellipse Width="9"
+                                                                         Height="9"
+                                                                         Fill="{x:Bind SlotColorBrush}"
+                                                                         Visibility="{x:Bind IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                            </Grid>
+
+                                                            <TextBlock Grid.Column="1"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                       Text="{x:Bind SlotId}" />
+
+                                                            <custom:SimpleCountryFlag Grid.Column="2"
+                                                                                      Width="22"
+                                                                                      VerticalAlignment="Center"
+                                                                                      CountryCode="{x:Bind CountryCode}"
+                                                                                      FlagType="Country" />
+
+                                                            <TextBlock Grid.Column="3"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Text="{x:Bind SlotSummary}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       TextWrapping="NoWrap" />
+
+                                                            <TextBlock Grid.Column="4"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Text="{x:Bind StatusText}" />
+                                                        </Grid>
+
+                                                        <!-- Row 1: Merged metadata & actions (icon-only on very narrow screens) -->
+                                                        <Grid Grid.Row="1"
+                                                              ColumnSpacing="6">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <StackPanel Grid.Column="0"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="4">
+                                                                <Button Padding="6,3"
+                                                                        Click="OnCopySlotPortClick"
+                                                                        Content="{x:Bind PortForwardingBadgeText}"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="{x:Bind PortForwardingTooltip}"
+                                                                        Visibility="{x:Bind ShowPortForwardingBadge, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                                <Button Padding="6,3"
+                                                                        Click="OnToggleSlotPortForwardingClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="{x:Bind PortForwardingToggleText}">
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Spacing="4">
+                                                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                                  FontSize="12"
+                                                                                  Glyph="&#xE839;" />
+                                                                        <TextBlock Text="{x:Bind PortForwardingToggleText}"
+                                                                                   Visibility="{Binding IsIconOnlyButtons, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Button>
+
+                                                                <Button Padding="6,3"
+                                                                        Click="OnSlotTemplatesClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="{x:Bind RuleCountBadge}">
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Spacing="4">
+                                                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                                  FontSize="12"
+                                                                                  Glyph="&#xE8FD;" />
+                                                                        <TextBlock Text="{x:Bind RuleCountBadge}"
+                                                                                   Visibility="{Binding IsIconOnlyButtons, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Button>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Column="1"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="4">
+                                                                <Button Padding="8,3"
+                                                                        Click="OnConnectSlotClick"
+                                                                        IsEnabled="{x:Bind CanToggleConnection}"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="{x:Bind ConnectButtonText}">
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Spacing="4">
+                                                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                                  FontSize="12"
+                                                                                  Glyph="{x:Bind ConnectButtonGlyph}" />
+                                                                        <TextBlock Text="{x:Bind ConnectButtonText}"
+                                                                                   Visibility="{Binding IsIconOnlyButtons, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Button>
+
+                                                                <Button Padding="8,3"
+                                                                        Click="OnEditSlotClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="Edit">
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Spacing="4">
+                                                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                                  FontSize="12"
+                                                                                  Glyph="&#xE70F;" />
+                                                                        <TextBlock Text="Edit"
+                                                                                   Visibility="{Binding IsIconOnlyButtons, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Button>
+
+                                                                <Button Padding="8,3"
+                                                                        Click="OnRemoveSlotClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind SlotId}"
+                                                                        ToolTipService.ToolTip="Remove"
+                                                                        Visibility="{x:Bind CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                              FontSize="12"
+                                                                              Glyph="&#xE711;" />
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
 
-                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Text="{x:Bind ViewModel.QuickRuleStatus}"
-                                       Visibility="{x:Bind ViewModel.HasQuickRuleStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <!-- TAB 1: Priority Rules -->
+                            <StackPanel Spacing="8"
+                                        Visibility="{x:Bind ViewModel.IsRulesTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
 
-                            <ItemsControl ItemsSource="{x:Bind ViewModel.Rules}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="conn:MultiTunnelRuleItem">
-                                        <Border Margin="0,3,0,0"
-                                                Padding="10,6"
-                                                Background="{ThemeResource InteractionDefaultColorBrush}"
-                                                BorderBrush="{ThemeResource BorderWeakColorBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="6">
-                                            <Grid ColumnSpacing="8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="32" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
+                                <!-- Service Template Quick-Apply -->
+                                <Grid ColumnSpacing="6"
+                                      RowSpacing="6">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="136" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-                                                <CheckBox Grid.Column="0"
-                                                          MinWidth="0"
-                                                          Click="OnRuleEnabledClick"
-                                                          IsChecked="{x:Bind IsEnabled, Mode=OneWay}"
-                                                          Style="{StaticResource CheckBoxStyle}"
-                                                          Tag="{x:Bind Id}" />
+                                    <ComboBox x:Name="PresetComboBox"
+                                              Grid.Row="0"
+                                              Grid.Column="0"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind ViewModel.AvailablePresets}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedQuickPreset, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" />
 
-                                                <TextBlock Grid.Column="1"
-                                                           VerticalAlignment="Center"
-                                                           Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                           Text="{x:Bind PriorityBadge}" />
+                                    <ComboBox x:Name="RouteComboBox"
+                                              Grid.Row="0"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind ViewModel.QuickPresetRouteOptions}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedQuickPresetRoute, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" />
 
-                                                <StackPanel Grid.Column="2"
-                                                            VerticalAlignment="Center"
-                                                            Spacing="1">
-                                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                               Text="{x:Bind Name}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
-                                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                                               Text="{x:Bind CriteriaSummary}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
+                                    <Button x:Name="AssignPresetButton"
+                                            Grid.Row="0"
+                                            Grid.Column="2"
+                                            Command="{x:Bind ViewModel.AddSelectedPresetCommand, Mode=OneTime}"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            ToolTipService.ToolTip="Assign">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Glyph="&#xE710;" />
+                                            <TextBlock x:Name="AssignPresetButtonLabel"
+                                                       Text="Assign" />
+                                        </StackPanel>
+                                    </Button>
 
-                                                <Border Grid.Column="3"
-                                                        Padding="8,2"
-                                                        VerticalAlignment="Center"
-                                                        Background="{ThemeResource BackgroundWeakColorBrush}"
-                                                        CornerRadius="4">
-                                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                                               Text="{x:Bind TargetBadge}" />
-                                                </Border>
+                                    <Button x:Name="ReplaceSlotButton"
+                                            Grid.Row="0"
+                                            Grid.Column="3"
+                                            Command="{x:Bind ViewModel.ReplaceWithSelectedPresetCommand, Mode=OneTime}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            ToolTipService.ToolTip="Replace Slot">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Glyph="&#xE8AB;" />
+                                            <TextBlock x:Name="ReplaceSlotButtonLabel"
+                                                       Text="Replace Slot" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
 
-                                                <Button Grid.Column="4"
-                                                        Padding="8,3"
-                                                        Click="OnMoveRuleUpClick"
-                                                        Content="↑"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind Id}" />
+                                <!-- Inline Quick Rule Editor -->
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnSpacing="6"
+                                          RowSpacing="6">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="RuleNameTextBox"
+                                                 Grid.Row="0"
+                                                 Grid.Column="0"
+                                                 PlaceholderText="Rule name"
+                                                 Text="{x:Bind ViewModel.QuickRuleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox x:Name="RuleAppTextBox"
+                                                 Grid.Row="0"
+                                                 Grid.Column="1"
+                                                 PlaceholderText="App (opera, chrome or .exe)"
+                                                 Text="{x:Bind ViewModel.QuickRuleApp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button x:Name="BrowseRuleAppButton"
+                                                Grid.Row="0"
+                                                Grid.Column="2"
+                                                Padding="8,4"
+                                                Command="{x:Bind ViewModel.BrowseQuickRuleAppCommand, Mode=OneTime}"
+                                                Content="📂"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                ToolTipService.ToolTip="Browse executable (.exe)" />
+                                        <TextBox x:Name="RuleDomainTextBox"
+                                                 Grid.Row="0"
+                                                 Grid.Column="3"
+                                                 PlaceholderText="Domain (*.openai.com)"
+                                                 Text="{x:Bind ViewModel.QuickRuleDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
 
-                                                <Button Grid.Column="5"
-                                                        Padding="8,3"
-                                                        Click="OnMoveRuleDownClick"
-                                                        Content="↓"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind Id}" />
-
-                                                <Button Grid.Column="6"
-                                                        Padding="8,3"
-                                                        Click="OnEditRuleClick"
-                                                        Content="Edit"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind Id}" />
-
-                                                <Button Grid.Column="7"
-                                                        Padding="8,3"
-                                                        Click="OnDeleteRuleClick"
-                                                        Content="✕"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Tag="{x:Bind Id}" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-
-                        <!-- TAB 2: Quick Traffic Simulator -->
-                        <StackPanel Spacing="8"
-                                    Visibility="{x:Bind ViewModel.IsSimulatorTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
-                                         PlaceholderText="App (chrome)"
-                                         Text="{x:Bind ViewModel.SimApp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Grid.Column="1"
-                                         PlaceholderText="Domain (api.openai.com)"
-                                         Text="{x:Bind ViewModel.SimDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Grid.Column="2"
-                                         PlaceholderText="Remote IP (optional)"
-                                         Text="{x:Bind ViewModel.SimRemoteIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </Grid>
-
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="105" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
-                                         PlaceholderText="Port"
-                                         Text="{x:Bind ViewModel.SimPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <ComboBox Grid.Column="1"
-                                          HorizontalAlignment="Stretch"
-                                          ItemsSource="{x:Bind ViewModel.ProtocolOptions, Mode=OneTime}"
-                                          SelectedItem="{x:Bind ViewModel.SimProtocol, Mode=TwoWay}"
-                                          Style="{StaticResource ComboBoxStyle}" />
-                                <Button Grid.Column="3"
-                                        Command="{x:Bind ViewModel.RunSimulationCommand, Mode=OneTime}"
-                                        Content="Test Route"
-                                        Style="{StaticResource PrimaryButtonStyle}" />
-                            </Grid>
-
-                            <Border Padding="10,8"
-                                    Background="{ThemeResource InteractionDefaultColorBrush}"
-                                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="6"
-                                    Visibility="{x:Bind ViewModel.HasSimResult, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
-                                               Text="{x:Bind ViewModel.SimResultSummary}" />
-                                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Text="{x:Bind ViewModel.SimResultDetails}"
-                                               TextWrapping="Wrap" />
+                                    <Grid ColumnSpacing="6"
+                                          RowSpacing="6">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="RuleIpOrPortTextBox"
+                                                 Grid.Row="0"
+                                                 Grid.Column="0"
+                                                 PlaceholderText="IP / CIDR or Port (e.g. 10.0.0.0/8 or 443)"
+                                                 Text="{x:Bind ViewModel.QuickRuleIpOrPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ComboBox x:Name="RuleTargetTypeComboBox"
+                                                  Grid.Row="0"
+                                                  Grid.Column="1"
+                                                  HorizontalAlignment="Stretch"
+                                                  ItemsSource="{x:Bind ViewModel.TargetTypeOptions, Mode=OneTime}"
+                                                  SelectedItem="{x:Bind ViewModel.QuickRuleTargetType, Mode=TwoWay}"
+                                                  Style="{StaticResource ComboBoxStyle}" />
+                                        <ComboBox x:Name="RuleTunnelIdComboBox"
+                                                  Grid.Row="0"
+                                                  Grid.Column="2"
+                                                  Width="72"
+                                                  ItemsSource="{x:Bind ViewModel.SlotIdOptions}"
+                                                  SelectedItem="{x:Bind ViewModel.QuickRuleTunnelId, Mode=TwoWay}"
+                                                  Style="{StaticResource ComboBoxStyle}"
+                                                  Visibility="{x:Bind ViewModel.IsQuickRuleTargetTunnel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Button x:Name="SaveRuleButton"
+                                                Grid.Row="0"
+                                                Grid.Column="3"
+                                                Command="{x:Bind ViewModel.SaveQuickRuleCommand, Mode=OneTime}"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                ToolTipService.ToolTip="{x:Bind ViewModel.QuickRuleSaveButtonText}">
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="6">
+                                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="12"
+                                                          Glyph="&#xE74E;" />
+                                                <TextBlock x:Name="SaveRuleButtonLabel"
+                                                           Text="{x:Bind ViewModel.QuickRuleSaveButtonText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="CancelEditRuleButton"
+                                                Grid.Row="0"
+                                                Grid.Column="4"
+                                                Command="{x:Bind ViewModel.CancelEditRuleCommand, Mode=OneTime}"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                ToolTipService.ToolTip="Cancel"
+                                                Visibility="{x:Bind ViewModel.IsEditingRule, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="6">
+                                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                          FontSize="12"
+                                                          Glyph="&#xE711;" />
+                                                <TextBlock x:Name="CancelEditRuleButtonLabel"
+                                                           Text="Cancel" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
                                 </StackPanel>
-                            </Border>
-                        </StackPanel>
 
-                    </Grid>
-                </ScrollViewer>
+                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Text="{x:Bind ViewModel.QuickRuleStatus}"
+                                           Visibility="{x:Bind ViewModel.HasQuickRuleStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.Rules}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="conn:MultiTunnelRuleItem">
+                                            <Border Margin="0,3,0,0"
+                                                    Padding="10,6"
+                                                    Background="{ThemeResource InteractionDefaultColorBrush}"
+                                                    BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <Grid>
+                                                    <!-- Wide Single-Row Layout -->
+                                                    <Grid ColumnSpacing="8"
+                                                          Visibility="{Binding IsMergedTableLayout, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="32" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <CheckBox Grid.Column="0"
+                                                                  MinWidth="0"
+                                                                  Click="OnRuleEnabledClick"
+                                                                  IsChecked="{x:Bind IsEnabled, Mode=OneWay}"
+                                                                  Style="{StaticResource CheckBoxStyle}"
+                                                                  Tag="{x:Bind Id}" />
+
+                                                        <TextBlock Grid.Column="1"
+                                                                   VerticalAlignment="Center"
+                                                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                   Text="{x:Bind PriorityBadge}" />
+
+                                                        <StackPanel Grid.Column="2"
+                                                                    VerticalAlignment="Center"
+                                                                    Spacing="1">
+                                                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                       Text="{x:Bind Name}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       TextWrapping="NoWrap" />
+                                                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Text="{x:Bind CriteriaSummary}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       TextWrapping="NoWrap" />
+                                                        </StackPanel>
+
+                                                        <Border Grid.Column="3"
+                                                                Padding="8,2"
+                                                                VerticalAlignment="Center"
+                                                                Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                                CornerRadius="4">
+                                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                                       Text="{x:Bind TargetBadge}" />
+                                                        </Border>
+
+                                                        <Button Grid.Column="4"
+                                                                Padding="8,3"
+                                                                Click="OnMoveRuleUpClick"
+                                                                Content="↑"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind Id}" />
+
+                                                        <Button Grid.Column="5"
+                                                                Padding="8,3"
+                                                                Click="OnMoveRuleDownClick"
+                                                                Content="↓"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind Id}" />
+
+                                                        <Button Grid.Column="6"
+                                                                Padding="8,3"
+                                                                Click="OnEditRuleClick"
+                                                                Content="Edit"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind Id}" />
+
+                                                        <Button Grid.Column="7"
+                                                                Padding="8,3"
+                                                                Click="OnDeleteRuleClick"
+                                                                Content="✕"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                Tag="{x:Bind Id}" />
+                                                    </Grid>
+
+                                                    <!-- Compact Merged-Column Layout (2 Rows) -->
+                                                    <Grid RowSpacing="6"
+                                                          Visibility="{Binding IsMergedTableLayout, ElementName=Self, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <Grid Grid.Row="0"
+                                                              ColumnSpacing="8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="28" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <CheckBox Grid.Column="0"
+                                                                      MinWidth="0"
+                                                                      Click="OnRuleEnabledClick"
+                                                                      IsChecked="{x:Bind IsEnabled, Mode=OneWay}"
+                                                                      Style="{StaticResource CheckBoxStyle}"
+                                                                      Tag="{x:Bind Id}" />
+
+                                                            <TextBlock Grid.Column="1"
+                                                                       VerticalAlignment="Center"
+                                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                       Text="{x:Bind PriorityBadge}" />
+
+                                                            <StackPanel Grid.Column="2"
+                                                                        VerticalAlignment="Center"
+                                                                        Spacing="1">
+                                                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                           Text="{x:Bind Name}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           TextWrapping="NoWrap" />
+                                                                <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                                           Text="{x:Bind CriteriaSummary}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           TextWrapping="NoWrap" />
+                                                            </StackPanel>
+                                                        </Grid>
+
+                                                        <Grid Grid.Row="1"
+                                                              ColumnSpacing="6">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Border Grid.Column="0"
+                                                                    Padding="8,2"
+                                                                    HorizontalAlignment="Left"
+                                                                    VerticalAlignment="Center"
+                                                                    Background="{ThemeResource BackgroundWeakColorBrush}"
+                                                                    CornerRadius="4">
+                                                                <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                                           Text="{x:Bind TargetBadge}" />
+                                                            </Border>
+
+                                                            <StackPanel Grid.Column="1"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="4">
+                                                                <Button Padding="8,3"
+                                                                        Click="OnMoveRuleUpClick"
+                                                                        Content="↑"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind Id}"
+                                                                        ToolTipService.ToolTip="Move Up" />
+
+                                                                <Button Padding="8,3"
+                                                                        Click="OnMoveRuleDownClick"
+                                                                        Content="↓"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind Id}"
+                                                                        ToolTipService.ToolTip="Move Down" />
+
+                                                                <Button Padding="8,3"
+                                                                        Click="OnEditRuleClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind Id}"
+                                                                        ToolTipService.ToolTip="Edit">
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Spacing="4">
+                                                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                                  FontSize="12"
+                                                                                  Glyph="&#xE70F;" />
+                                                                        <TextBlock Text="Edit"
+                                                                                   Visibility="{Binding IsIconOnlyButtons, ElementName=Self, Converter={StaticResource NotBooleanToVisibilityConverter}}" />
+                                                                    </StackPanel>
+                                                                </Button>
+
+                                                                <Button Padding="8,3"
+                                                                        Click="OnDeleteRuleClick"
+                                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                                        Tag="{x:Bind Id}"
+                                                                        ToolTipService.ToolTip="Delete">
+                                                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                              FontSize="12"
+                                                                              Glyph="&#xE711;" />
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- TAB 2: Quick Traffic Simulator -->
+                            <StackPanel Spacing="8"
+                                        Visibility="{x:Bind ViewModel.IsSimulatorTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                                <Grid ColumnSpacing="6"
+                                      RowSpacing="6">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="SimAppTextBox"
+                                             Grid.Row="0"
+                                             Grid.Column="0"
+                                             PlaceholderText="App (chrome)"
+                                             Text="{x:Bind ViewModel.SimApp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox x:Name="SimDomainTextBox"
+                                             Grid.Row="0"
+                                             Grid.Column="1"
+                                             PlaceholderText="Domain (api.openai.com)"
+                                             Text="{x:Bind ViewModel.SimDomain, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox x:Name="SimRemoteIpTextBox"
+                                             Grid.Row="0"
+                                             Grid.Column="2"
+                                             PlaceholderText="Remote IP (optional)"
+                                             Text="{x:Bind ViewModel.SimRemoteIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="105" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             PlaceholderText="Port"
+                                             Text="{x:Bind ViewModel.SimPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ComboBox Grid.Column="1"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind ViewModel.ProtocolOptions, Mode=OneTime}"
+                                              SelectedItem="{x:Bind ViewModel.SimProtocol, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" />
+                                    <Button x:Name="TestRouteButton"
+                                            Grid.Column="3"
+                                            Command="{x:Bind ViewModel.RunSimulationCommand, Mode=OneTime}"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            ToolTipService.ToolTip="Test Route">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="6">
+                                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                      FontSize="12"
+                                                      Glyph="&#xE768;" />
+                                            <TextBlock x:Name="TestRouteButtonLabel"
+                                                       Text="Test Route" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Border Padding="10,8"
+                                        Background="{ThemeResource InteractionDefaultColorBrush}"
+                                        BorderBrush="{ThemeResource BorderWeakColorBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Visibility="{x:Bind ViewModel.HasSimResult, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Text="{x:Bind ViewModel.SimResultSummary}" />
+                                        <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Text="{x:Bind ViewModel.SimResultDetails}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                        </Grid>
+                    </ScrollViewer>
+
+                </StackPanel>
 
             </StackPanel>
+        </ContentControl>
 
-        </StackPanel>
-    </ContentControl>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="ResponsiveStates">
+                <VisualState x:Name="WideState" />
+
+                <VisualState x:Name="CompactTableState">
+                    <VisualState.Setters>
+                        <Setter Target="DefaultRoutingPanel.(Grid.Row)" Value="1" />
+                        <Setter Target="DefaultRoutingPanel.(Grid.Column)" Value="0" />
+                        <Setter Target="DefaultRoutingPanel.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="DefaultRoutingPanel.HorizontalAlignment" Value="Left" />
+
+                        <Setter Target="CountryPickerComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="ServerPickerComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="ServerPickerComboBox.(Grid.Column)" Value="0" />
+                        <Setter Target="ServerPickerComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="ApplySlotButton.(Grid.Row)" Value="1" />
+
+                        <Setter Target="RouteComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="AssignPresetButton.(Grid.Row)" Value="1" />
+                        <Setter Target="AssignPresetButton.(Grid.Column)" Value="2" />
+                        <Setter Target="ReplaceSlotButton.(Grid.Row)" Value="1" />
+                        <Setter Target="ReplaceSlotButton.(Grid.Column)" Value="3" />
+
+                        <Setter Target="RuleDomainTextBox.(Grid.Column)" Value="1" />
+                        <Setter Target="RuleDomainTextBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="RuleAppTextBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleAppTextBox.(Grid.Column)" Value="0" />
+                        <Setter Target="RuleAppTextBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="BrowseRuleAppButton.(Grid.Row)" Value="1" />
+                        <Setter Target="BrowseRuleAppButton.(Grid.Column)" Value="3" />
+
+                        <Setter Target="RuleIpOrPortTextBox.(Grid.ColumnSpan)" Value="5" />
+                        <Setter Target="RuleTargetTypeComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleTargetTypeComboBox.(Grid.Column)" Value="0" />
+                        <Setter Target="RuleTunnelIdComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleTunnelIdComboBox.(Grid.Column)" Value="1" />
+                        <Setter Target="SaveRuleButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SaveRuleButton.(Grid.Column)" Value="3" />
+                        <Setter Target="CancelEditRuleButton.(Grid.Row)" Value="1" />
+                        <Setter Target="CancelEditRuleButton.(Grid.Column)" Value="4" />
+
+                        <Setter Target="SimDomainTextBox.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.Row)" Value="1" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.Column)" Value="0" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.ColumnSpan)" Value="3" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:Name="NarrowIconOnlyState">
+                    <VisualState.Setters>
+                        <Setter Target="FullConfigButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="FullConfigButton.Padding" Value="8,6" />
+                        <Setter Target="ApplySlotButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="ApplySlotButton.Padding" Value="8,6" />
+                        <Setter Target="AssignPresetButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="AssignPresetButton.Padding" Value="8,6" />
+                        <Setter Target="ReplaceSlotButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="ReplaceSlotButton.Padding" Value="8,6" />
+                        <Setter Target="SaveRuleButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="SaveRuleButton.Padding" Value="8,6" />
+                        <Setter Target="CancelEditRuleButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="CancelEditRuleButton.Padding" Value="8,6" />
+                        <Setter Target="TestRouteButtonLabel.Visibility" Value="Collapsed" />
+                        <Setter Target="TestRouteButton.Padding" Value="8,6" />
+
+                        <Setter Target="DefaultRoutingPanel.(Grid.Row)" Value="1" />
+                        <Setter Target="DefaultRoutingPanel.(Grid.Column)" Value="0" />
+                        <Setter Target="DefaultRoutingPanel.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="DefaultRoutingPanel.HorizontalAlignment" Value="Left" />
+
+                        <Setter Target="CountryPickerComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="ServerPickerComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="ServerPickerComboBox.(Grid.Column)" Value="0" />
+                        <Setter Target="ServerPickerComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="ApplySlotButton.(Grid.Row)" Value="1" />
+
+                        <Setter Target="RouteComboBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="AssignPresetButton.(Grid.Row)" Value="1" />
+                        <Setter Target="AssignPresetButton.(Grid.Column)" Value="2" />
+                        <Setter Target="ReplaceSlotButton.(Grid.Row)" Value="1" />
+                        <Setter Target="ReplaceSlotButton.(Grid.Column)" Value="3" />
+
+                        <Setter Target="RuleDomainTextBox.(Grid.Column)" Value="1" />
+                        <Setter Target="RuleDomainTextBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="RuleAppTextBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleAppTextBox.(Grid.Column)" Value="0" />
+                        <Setter Target="RuleAppTextBox.(Grid.ColumnSpan)" Value="3" />
+                        <Setter Target="BrowseRuleAppButton.(Grid.Row)" Value="1" />
+                        <Setter Target="BrowseRuleAppButton.(Grid.Column)" Value="3" />
+
+                        <Setter Target="RuleIpOrPortTextBox.(Grid.ColumnSpan)" Value="5" />
+                        <Setter Target="RuleTargetTypeComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleTargetTypeComboBox.(Grid.Column)" Value="0" />
+                        <Setter Target="RuleTunnelIdComboBox.(Grid.Row)" Value="1" />
+                        <Setter Target="RuleTunnelIdComboBox.(Grid.Column)" Value="1" />
+                        <Setter Target="SaveRuleButton.(Grid.Row)" Value="1" />
+                        <Setter Target="SaveRuleButton.(Grid.Column)" Value="3" />
+                        <Setter Target="CancelEditRuleButton.(Grid.Row)" Value="1" />
+                        <Setter Target="CancelEditRuleButton.(Grid.Column)" Value="4" />
+
+                        <Setter Target="SimDomainTextBox.(Grid.ColumnSpan)" Value="2" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.Row)" Value="1" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.Column)" Value="0" />
+                        <Setter Target="SimRemoteIpTextBox.(Grid.ColumnSpan)" Value="3" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
 
 </UserControl>

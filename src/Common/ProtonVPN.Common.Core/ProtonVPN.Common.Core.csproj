@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -16,8 +16,6 @@
         <Folder Include="Properties\" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.ServiceProcess.ServiceController" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+<PackageReference Include="System.ServiceProcess.ServiceController" />
+</ItemGroup>
 </Project>

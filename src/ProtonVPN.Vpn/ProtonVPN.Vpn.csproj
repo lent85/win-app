@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
         <OutputPath>..\bin\</OutputPath>
@@ -24,12 +24,8 @@
     <ItemGroup>
         <PackageReference Include="Autofac" />
         <PackageReference Include="Newtonsoft.Json" />
-        <PackageReference Include="System.Collections.Immutable" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Management" />
-        <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+<PackageReference Include="System.Management" />
+</ItemGroup>
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>

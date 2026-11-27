@@ -66,6 +66,7 @@ public sealed class MultiTunnelSlotItem
     public SolidColorBrush? SlotColorBrush { get; init; }
     public bool CanToggleConnection => !IsConnecting;
     public string ConnectButtonText => IsConnecting ? "Connecting..." : (IsConnected ? "Disconnect" : "Connect");
+    public string ConnectButtonGlyph => IsConnected ? "\uE7E8" : "\uE768";
     public required bool CanRemove { get; init; }
     public required string SlotSummary { get; init; }
     public int RuleCount { get; init; }

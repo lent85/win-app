@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -16,10 +16,8 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="BouncyCastle.Cryptography" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Security.Cryptography.ProtectedData" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+<PackageReference Include="System.Security.Cryptography.ProtectedData" />
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\Logging\ProtonVPN.Logging.Contracts\ProtonVPN.Logging.Contracts.csproj" />
         <ProjectReference Include="..\ProtonVPN.Crypto.Contracts\ProtonVPN.Crypto.Contracts.csproj" />

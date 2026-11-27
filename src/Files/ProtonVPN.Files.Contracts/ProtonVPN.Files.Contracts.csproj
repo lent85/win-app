@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -12,11 +12,7 @@
             <Link>Properties\GlobalAssemblyInfo.cs</Link>
         </Compile>
     </ItemGroup>
-    <ItemGroup>
-      <PackageReference Include="System.Formats.Asn1" />
-      <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
-    <ItemGroup>
+<ItemGroup>
       <ProjectReference Include="..\..\Serialization\ProtonVPN.Serialization.Contracts\ProtonVPN.Serialization.Contracts.csproj" />
     </ItemGroup>
 </Project>

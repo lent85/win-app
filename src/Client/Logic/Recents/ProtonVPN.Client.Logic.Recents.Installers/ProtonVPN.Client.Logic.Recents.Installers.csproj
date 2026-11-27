@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -16,9 +16,7 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Autofac" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\..\..\EntityMapping\ProtonVPN.EntityMapping.Common.Installers\ProtonVPN.EntityMapping.Common.Installers.csproj" />
         <ProjectReference Include="..\ProtonVPN.Client.Logic.Recents.Contracts\ProtonVPN.Client.Logic.Recents.Contracts.csproj" />

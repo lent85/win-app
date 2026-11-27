@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows10.0.22621.0</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -21,14 +21,7 @@
     <ItemGroup>
         <Resource Include="protonvpn.ico" />
     </ItemGroup>
-    <ItemGroup>
-        <PackageReference Include="System.Collections.Immutable" />
-        <PackageReference Include="System.Diagnostics.DiagnosticSource" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Text.Encoding.CodePages" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
-    <ItemGroup>
+<ItemGroup>
         <Folder Include="Properties\" />
     </ItemGroup>
     <ItemGroup>

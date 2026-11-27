@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -27,9 +27,6 @@
         <PackageReference Include="Newtonsoft.Json" />
         <PackageReference Include="Polly" />
         <PackageReference Include="Polly.Contrib.WaitAndRetry" />
-        <PackageReference Include="System.Formats.Asn1" />
-        <PackageReference Include="System.Net.Http" />
-        <PackageReference Include="System.Text.Json" />
-        <PackageReference Include="TimeZoneConverter" />
+<PackageReference Include="TimeZoneConverter" />
     </ItemGroup>
 </Project>

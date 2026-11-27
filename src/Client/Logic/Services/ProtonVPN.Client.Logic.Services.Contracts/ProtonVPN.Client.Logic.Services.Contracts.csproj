@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -12,10 +12,8 @@
         <Compile Include="..\..\..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     </ItemGroup>
     <ItemGroup>
-      <PackageReference Include="System.Formats.Asn1" />
-      <PackageReference Include="System.ServiceProcess.ServiceController" />
-      <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+<PackageReference Include="System.ServiceProcess.ServiceController" />
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\..\..\OperatingSystems\Services\ProtonVPN.OperatingSystems.Services.Contracts\ProtonVPN.OperatingSystems.Services.Contracts.csproj" />
         <ProjectReference Include="..\..\Connection\ProtonVPN.Client.Logic.Connection.Contracts\ProtonVPN.Client.Logic.Connection.Contracts.csproj" />

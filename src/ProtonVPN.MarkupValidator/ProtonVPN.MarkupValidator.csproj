@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -18,9 +18,6 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.Windows.Compatibility" />
-        <PackageReference Include="System.Collections.Immutable" />
-        <PackageReference Include="System.Private.ServiceModel" />
-        <PackageReference Include="System.Security.Cryptography.Pkcs" />
-        <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+<PackageReference Include="System.Private.ServiceModel" />
+</ItemGroup>
 </Project>

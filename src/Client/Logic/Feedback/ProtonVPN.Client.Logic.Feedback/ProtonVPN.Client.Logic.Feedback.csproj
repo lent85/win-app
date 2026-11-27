@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>$(NetVersion)-windows</TargetFramework>
         <PreserveCompilationContext>true</PreserveCompilationContext>
@@ -19,9 +19,7 @@
     </ItemGroup>
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" />
-      <PackageReference Include="System.Formats.Asn1" />
-      <PackageReference Include="System.Text.Json" />
-    </ItemGroup>
+</ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\..\..\OperatingSystems\Registries\ProtonVPN.OperatingSystems.Registries.Contracts\ProtonVPN.OperatingSystems.Registries.Contracts.csproj" />
         <ProjectReference Include="..\..\..\..\OperatingSystems\WebAuthn\ProtonVPN.OperatingSystems.WebAuthn.Contracts\ProtonVPN.OperatingSystems.WebAuthn.Contracts.csproj" />
