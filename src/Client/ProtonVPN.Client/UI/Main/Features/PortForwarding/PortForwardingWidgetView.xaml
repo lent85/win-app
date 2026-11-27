@@ -26,6 +26,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:featureicons="using:ProtonVPN.Client.UI.Main.FeatureIcons"
              xmlns:icons="using:ProtonVPN.Client.Common.UI.Assets.Icons"
+             xmlns:local="using:ProtonVPN.Client.UI.Main.Features.PortForwarding"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:pathicons="using:ProtonVPN.Client.Common.UI.Assets.Icons.PathIcons"
              x:DefaultBindMode="OneWay"
@@ -99,6 +100,49 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 
                 <components:ActivePortComponentView Margin="-4,-2,0,0"
                                                     Visibility="{x:Bind ViewModel.IsActivePortComponentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                <StackPanel Spacing="6"
+                            Visibility="{x:Bind ViewModel.HasMultiTunnelSlotPorts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="Multi-Tunnel Ports (T1–T5)" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.MultiTunnelSlotPorts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:SlotForwardedPortItem">
+                                <Grid Margin="0,2,0,0"
+                                      ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0"
+                                             Width="8"
+                                             Height="8"
+                                             VerticalAlignment="Center"
+                                             Fill="{x:Bind SlotColorBrush}" />
+                                    <TextBlock Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Text="{x:Bind HeaderText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               Text="{x:Bind PortText}" />
+                                    <Button Grid.Column="3"
+                                            Padding="6,2"
+                                            Click="OnCopySlotPortClick"
+                                            Content="Copy"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Tag="{x:Bind SlotId}"
+                                            Visibility="{x:Bind HasActivePort, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
 
                 <Border Height="1"
                         Background="{ThemeResource BorderWeakColorBrush}"

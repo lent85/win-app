@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -22,9 +22,11 @@ namespace ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 public class PortForwardingPortChangedMessage
 {
     public int? ActivePort { get; }
+    public string SlotId { get; }
 
-    public PortForwardingPortChangedMessage(int? activePort)
+    public PortForwardingPortChangedMessage(int? activePort, string slotId = "T1")
     {
         ActivePort = activePort;
+        SlotId = string.IsNullOrWhiteSpace(slotId) ? "T1" : slotId.Trim().ToUpperInvariant();
     }
 }

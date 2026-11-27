@@ -209,12 +209,14 @@ the Free Software Foundation, either version 3 of the License, or
                                                 BorderBrush="{ThemeResource BorderWeakColorBrush}"
                                                 BorderThickness="1"
                                                 CornerRadius="6">
-                                            <Grid ColumnSpacing="8">
+                                            <Grid ColumnSpacing="6">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="28" />
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="Auto" />
@@ -258,6 +260,23 @@ the Free Software Foundation, either version 3 of the License, or
                                                            Text="{x:Bind StatusText}" />
 
                                                 <Button Grid.Column="5"
+                                                        Padding="6,3"
+                                                        Click="OnCopySlotPortClick"
+                                                        Content="{x:Bind PortForwardingBadgeText}"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Tag="{x:Bind SlotId}"
+                                                        ToolTipService.ToolTip="{x:Bind PortForwardingTooltip}"
+                                                        Visibility="{x:Bind ShowPortForwardingBadge, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                <Button Grid.Column="6"
+                                                        Padding="6,3"
+                                                        Click="OnToggleSlotPortForwardingClick"
+                                                        Content="{x:Bind PortForwardingToggleText}"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Tag="{x:Bind SlotId}"
+                                                        ToolTipService.ToolTip="Toggle Port Forwarding for this tunnel" />
+
+                                                <Button Grid.Column="7"
                                                         Padding="8,3"
                                                         Click="OnSlotTemplatesClick"
                                                         Content="{x:Bind RuleCountBadge}"
@@ -265,7 +284,7 @@ the Free Software Foundation, either version 3 of the License, or
                                                         Tag="{x:Bind SlotId}"
                                                         ToolTipService.ToolTip="Assign templates &amp; rules to this tunnel" />
 
-                                                <Button Grid.Column="6"
+                                                <Button Grid.Column="8"
                                                         Padding="8,3"
                                                         Click="OnConnectSlotClick"
                                                         Content="{x:Bind ConnectButtonText}"
@@ -273,14 +292,14 @@ the Free Software Foundation, either version 3 of the License, or
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Tag="{x:Bind SlotId}" />
 
-                                                <Button Grid.Column="7"
+                                                <Button Grid.Column="9"
                                                         Padding="8,3"
                                                         Click="OnEditSlotClick"
                                                         Content="Edit"
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Tag="{x:Bind SlotId}" />
 
-                                                <Button Grid.Column="8"
+                                                <Button Grid.Column="10"
                                                         Padding="8,3"
                                                         Click="OnRemoveSlotClick"
                                                         Content="✕"

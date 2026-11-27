@@ -10,6 +10,7 @@
  */
 
 using System.Text.Json.Serialization;
+using ProtonVPN.Common.Legacy.PortForwarding;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
 
 namespace ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
@@ -29,12 +30,30 @@ public sealed class MultiTunnelSlotConfig
     public string ServerGatewayIpv4 { get; set; } = "10.2.0.1";
     public bool IsConnected { get; set; }
     public bool IsDefaultRouteTunnel { get; set; }
+    public bool? PortForwardingOverride { get; set; }
 
     [JsonIgnore]
     public bool IsConnecting { get; set; }
 
     [JsonIgnore]
     public string? LastError { get; set; }
+
+    [JsonIgnore]
+    public bool IsP2PServer { get; set; }
+
+    [JsonIgnore]
+    public int? ActiveForwardedPort { get; set; }
+
+    [JsonIgnore]
+    public PortMappingStatus PortForwardingStatus { get; set; }
+
+    [JsonIgnore]
+    public bool HasPortForwardingError { get; set; }
+
+    [JsonIgnore]
+    public DateTime? LastPortChangeTimeUtc { get; set; }
+
+    public bool ResolveEffectivePortForwarding(bool globalEnabled) => PortForwardingOverride ?? globalEnabled;
 
     public static string GetSlotColorHex(string? slotId) =>
         (slotId?.Trim().ToUpperInvariant()) switch

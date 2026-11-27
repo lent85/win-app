@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2024 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,6 +17,7 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media;
 using ProtonVPN.Client.Contracts.Services.Browsing;
@@ -29,18 +30,27 @@ using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Enums;
 using ProtonVPN.Client.Logic.Connection.Contracts.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
+using ProtonVPN.Client.Services.PortForwarding;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
+using ProtonVPN.Client.UI.Main.Features.PortForwarding;
 using ProtonVPN.Client.UI.Main.Settings.Bases;
 
 namespace ProtonVPN.Client.UI.Main.Settings.Connection;
 
 public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
     IEventMessageReceiver<PortForwardingPortChangedMessage>,
-    IEventMessageReceiver<PortForwardingStatusChangedMessage>
+    IEventMessageReceiver<PortForwardingStatusChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private readonly IUrlsBrowser _urlsBrowser;
     private readonly IPortForwardingManager _portForwardingManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
+    private readonly IPortForwardingClipboardService _portForwardingClipboardService;
+
+    public ObservableCollection<SlotForwardedPortItem> MultiTunnelSlotPorts { get; } = [];
+    public bool HasMultiTunnelSlotPorts => MultiTunnelSlotPorts.Count > 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PortForwardingFeatureIconSource))]
@@ -52,9 +62,8 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
 
     public override string Title => Localizer.Get("Settings_Connection_PortForwarding");
 
-    public bool IsExpanded => IsPortForwardingEnabled
-                           && Settings.IsPortForwardingEnabled
-                           && ConnectionManager.IsConnected;
+    public bool IsExpanded => (IsPortForwardingEnabled && Settings.IsPortForwardingEnabled && ConnectionManager.IsConnected)
+                           || HasMultiTunnelSlotPorts;
 
     public ImageSource PortForwardingFeatureIconSource => GetFeatureIconSource(IsPortForwardingEnabled);
 
@@ -78,7 +87,9 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
         ISettingsConflictResolver settingsConflictResolver,
         IConnectionManager connectionManager,
         IViewModelHelper viewModelHelper,
-        IPortForwardingManager portForwardingManager)
+        IPortForwardingManager portForwardingManager,
+        IMultiTunnelManager multiTunnelManager,
+        IPortForwardingClipboardService portForwardingClipboardService)
         : base(requiredReconnectionSettings,
                mainViewNavigator,
                settingsViewNavigator,
@@ -90,6 +101,8 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
     {
         _urlsBrowser = urlsBrowser;
         _portForwardingManager = portForwardingManager;
+        _multiTunnelManager = multiTunnelManager;
+        _portForwardingClipboardService = portForwardingClipboardService;
         PageSettings =
         [
             ChangedSettingArgs.Create(() => Settings.IsPortForwardingNotificationEnabled, () => IsPortForwardingNotificationEnabled),
@@ -111,18 +124,21 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(WarningMessage));
         OnPropertyChanged(nameof(IsWarningMessageVisible));
+        RefreshMultiTunnelSlotPorts();
     }
 
     protected override void OnSaveSettings()
     {
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsWarningMessageVisible));
+        RefreshMultiTunnelSlotPorts();
     }
 
     protected override void OnRetrieveSettings()
     {
         IsPortForwardingEnabled = Settings.IsPortForwardingEnabled;
         IsPortForwardingNotificationEnabled = Settings.IsPortForwardingNotificationEnabled;
+        RefreshMultiTunnelSlotPorts();
     }
 
     protected override void OnConnectionStatusChanged(ConnectionStatus connectionStatus)
@@ -130,6 +146,7 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(WarningMessage));
         OnPropertyChanged(nameof(IsWarningMessageVisible));
+        RefreshMultiTunnelSlotPorts();
     }
 
     protected override void OnSettingsChanged(string propertyName)
@@ -138,6 +155,7 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
         {
             OnPropertyChanged(nameof(IsExpanded));
             OnPropertyChanged(nameof(IsWarningMessageVisible));
+            RefreshMultiTunnelSlotPorts();
         }
     }
 
@@ -149,11 +167,33 @@ public partial class PortForwardingPageViewModel : SettingsPageViewModelBase,
     private void OnPortForwardingChange()
     {
         OnPropertyChanged(nameof(IsWarningMessageVisible));
+        RefreshMultiTunnelSlotPorts();
     }
 
     public void Receive(PortForwardingStatusChangedMessage message)
     {
         ExecuteOnUIThread(OnPortForwardingChange);
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
+    {
+        ExecuteOnUIThread(RefreshMultiTunnelSlotPorts);
+    }
+
+    public Task CopySlotPortAsync(string slotId)
+    {
+        return _portForwardingClipboardService.CopyActivePortToClipboardAsync(slotId);
+    }
+
+    private void RefreshMultiTunnelSlotPorts()
+    {
+        MultiTunnelSlotPorts.Clear();
+        foreach (SlotForwardedPortItem item in SlotForwardedPortItem.BuildList(_multiTunnelManager, _portForwardingManager, Settings))
+        {
+            MultiTunnelSlotPorts.Add(item);
+        }
+        OnPropertyChanged(nameof(HasMultiTunnelSlotPorts));
+        OnPropertyChanged(nameof(IsExpanded));
     }
 
     protected override void OnLanguageChanged()

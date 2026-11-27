@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -22,4 +22,5 @@ namespace ProtonVPN.Client.Notifications.Contracts;
 public interface IPortForwardingNewPortNotificationSender
 {
     void Send(int activePort);
+    void Send(int activePort, string? slotId);
 }

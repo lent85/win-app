@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2024 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,6 +17,7 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using ProtonVPN.Client.Contracts.Profiles;
 using ProtonVPN.Client.Core.Bases;
@@ -29,6 +30,8 @@ using ProtonVPN.Client.Localization.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
+using ProtonVPN.Client.Services.PortForwarding;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
 using ProtonVPN.Client.UI.Main.Features.Bases;
@@ -40,11 +43,17 @@ namespace ProtonVPN.Client.UI.Main.Features.PortForwarding;
 
 public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
     IEventMessageReceiver<PortForwardingStatusChangedMessage>,
-    IEventMessageReceiver<PortForwardingPortChangedMessage>
+    IEventMessageReceiver<PortForwardingPortChangedMessage>,
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
 {
     private readonly IPortForwardingManager _portForwardingManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
+    private readonly IPortForwardingClipboardService _portForwardingClipboardService;
     private readonly Lazy<List<ChangedSettingArgs>> _disablePortForwardingSettings;
     private readonly Lazy<List<ChangedSettingArgs>> _enablePortForwardingSettings;
+
+    public ObservableCollection<SlotForwardedPortItem> MultiTunnelSlotPorts { get; } = [];
+    public bool HasMultiTunnelSlotPorts => MultiTunnelSlotPorts.Count > 0;
 
     public override string Header => Localizer.Get("Settings_Connection_PortForwarding");
 
@@ -89,7 +98,9 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
         IRequiredReconnectionSettings requiredReconnectionSettings,
         ISettingsConflictResolver settingsConflictResolver,
         IProfileEditor profileEditor,
-        IPortForwardingManager portForwardingManager)
+        IPortForwardingManager portForwardingManager,
+        IMultiTunnelManager multiTunnelManager,
+        IPortForwardingClipboardService portForwardingClipboardService)
         : base(viewModelHelper,
                mainViewNavigator,
                settingsViewNavigator,
@@ -103,6 +114,8 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
                ConnectionFeature.PortForwarding)
     {
         _portForwardingManager = portForwardingManager;
+        _multiTunnelManager = multiTunnelManager;
+        _portForwardingClipboardService = portForwardingClipboardService;
 
         _disablePortForwardingSettings = new(() =>
         [
@@ -133,6 +146,18 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
         OnPropertyChanged(nameof(WarningMessage));
     }
 
+    protected override void OnActivated()
+    {
+        base.OnActivated();
+        RefreshMultiTunnelSlotPorts();
+    }
+
+    protected override void OnFeatureFlyoutOpened()
+    {
+        base.OnFeatureFlyoutOpened();
+        RefreshMultiTunnelSlotPorts();
+    }
+
     protected override void OnSettingsChanged()
     {
         OnPropertyChanged(nameof(Status));
@@ -141,6 +166,7 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
         OnPropertyChanged(nameof(IsWarningMessageVisible));
         OnPropertyChanged(nameof(IsActivePortComponentVisible));
         OnPropertyChanged(nameof(IsPortForwardingEnabled));
+        RefreshMultiTunnelSlotPorts();
     }
 
     protected override void OnConnectionStatusChanged()
@@ -154,6 +180,7 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
         OnPropertyChanged(nameof(IsFeatureOverridden));
         OnPropertyChanged(nameof(CurrentProfile));
         OnPropertyChanged(nameof(IsPortForwardingEnabled));
+        RefreshMultiTunnelSlotPorts();
     }
 
     public void Receive(PortForwardingStatusChangedMessage message)
@@ -166,11 +193,32 @@ public partial class PortForwardingWidgetViewModel : FeatureWidgetViewModelBase,
         OnPropertyChanged(nameof(InfoMessage));
         OnPropertyChanged(nameof(IsInfoMessageVisible));
         OnPropertyChanged(nameof(IsWarningMessageVisible));
+        RefreshMultiTunnelSlotPorts();
     }
 
     public void Receive(PortForwardingPortChangedMessage message)
     {
         ExecuteOnUIThread(OnPortForwardingChange);
+    }
+
+    public void Receive(MultiTunnelPolicyChangedMessage message)
+    {
+        ExecuteOnUIThread(RefreshMultiTunnelSlotPorts);
+    }
+
+    public Task CopySlotPortAsync(string slotId)
+    {
+        return _portForwardingClipboardService.CopyActivePortToClipboardAsync(slotId);
+    }
+
+    private void RefreshMultiTunnelSlotPorts()
+    {
+        MultiTunnelSlotPorts.Clear();
+        foreach (SlotForwardedPortItem item in SlotForwardedPortItem.BuildList(_multiTunnelManager, _portForwardingManager, Settings))
+        {
+            MultiTunnelSlotPorts.Add(item);
+        }
+        OnPropertyChanged(nameof(HasMultiTunnelSlotPorts));
     }
 
     protected override bool IsOnFeaturePage(PageViewModelBase? currentPageContext)

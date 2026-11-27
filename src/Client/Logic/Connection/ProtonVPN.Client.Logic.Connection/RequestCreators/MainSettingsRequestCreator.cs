@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,8 +17,10 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System.Text.Json;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Features;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators;
 using ProtonVPN.Client.Logic.Profiles.Contracts.Models;
 using ProtonVPN.Client.Settings.Contracts;
@@ -56,6 +58,9 @@ public class MainSettingsRequestCreator : IMainSettingsRequestCreator
             settings.PortForwarding = connectionProfile.Settings.IsPortForwardingEnabled;
             settings.ModerateNat = connectionProfile.Settings.NatType == NatType.Moderate;
         }
+
+        // An explicit T1 override also applies when the primary connection uses a profile.
+        settings.PortForwarding = ResolveEffectivePrimaryPortForwarding(settings.PortForwarding);
 
         if (settings.NetShieldMode == (int)NetShieldMode.BlockAdsMalwareTrackersAdultContent && 
             (_settings.VpnPlan.IsB2B || connectionIntent?.Feature is B2BFeatureIntent))
@@ -113,6 +118,32 @@ public class MainSettingsRequestCreator : IMainSettingsRequestCreator
             DnsBlockMode = GetDnsBlockMode(DefaultSettings.IsLocalAreaNetworkAccessAllowed(isPaidUser), DefaultSettings.IsLocalDnsEnabled),
             ShouldDisableWeakHostSetting = DefaultSettings.ShouldDisableWeakHostSetting,
         };
+    }
+
+    private bool ResolveEffectivePrimaryPortForwarding(bool fallback)
+    {
+        if (!_settings.IsMultiTunnelEnabled || string.IsNullOrWhiteSpace(_settings.MultiTunnelPolicyJson))
+        {
+            return fallback;
+        }
+
+        try
+        {
+            MultiTunnelPolicyConfig? policy = JsonSerializer.Deserialize<MultiTunnelPolicyConfig>(
+                _settings.MultiTunnelPolicyJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            MultiTunnelSlotConfig? t1 = policy?.Slots?.FirstOrDefault(s =>
+                string.Equals(s.SlotId, "T1", StringComparison.OrdinalIgnoreCase));
+            if (t1 is not null)
+            {
+                return t1.ResolveEffectivePortForwarding(fallback);
+            }
+        }
+        catch
+        {
+        }
+
+        return fallback;
     }
 
     private KillSwitchModeIpcEntity GetKillSwitchMode(bool isKillSwitchEnabled, KillSwitchMode killSwitchMode)

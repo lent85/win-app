@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,7 +17,10 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System;
+using ProtonVPN.Native.PInvoke;
 using ProtonVPN.Service.Start;
+using ProtonVPN.Vpn.LocalAgent;
 
 namespace ProtonVPN.Service
 {
@@ -25,6 +28,13 @@ namespace ProtonVPN.Service
     {
         public static void Main(string[] args)
         {
+            if (args.Length > 0 && string.Equals(args[0], "--local-agent-worker", StringComparison.OrdinalIgnoreCase))
+            {
+                Kernel32.SetDefaultDllDirectories(Kernel32.SetDefaultDllDirectoriesFlags.LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+                LocalAgentWorkerHost.Run(Console.In, Console.Out);
+                return;
+            }
+
             Bootstrapper bootstrapper = new();
             bootstrapper.Initialize();
         }

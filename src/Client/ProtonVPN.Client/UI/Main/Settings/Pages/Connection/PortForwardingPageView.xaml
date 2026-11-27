@@ -27,6 +27,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
       xmlns:featureicons="using:ProtonVPN.Client.UI.Main.FeatureIcons"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
       xmlns:pathicons="using:ProtonVPN.Client.Common.UI.Assets.Icons.PathIcons" 
+      xmlns:pf="using:ProtonVPN.Client.UI.Main.Features.PortForwarding"
       xmlns:components="using:ProtonVPN.Client.UI.Main.Components"
       x:DefaultBindMode="OneWay"
       AutomationProperties.AutomationId="PortForwardingPage"
@@ -80,6 +81,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
                             <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <components:ActivePortComponentView Grid.Row="0"
@@ -94,6 +96,51 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
                                                                      Size="Pixels16" />
                             </custom:BulletContentControl.BulletContent>
                         </custom:BulletContentControl>
+
+                        <StackPanel Grid.Row="2"
+                                    Margin="0,16,0,0"
+                                    Spacing="6"
+                                    Visibility="{x:Bind ViewModel.HasMultiTunnelSlotPorts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Foreground="{ThemeResource TextWeakColorBrush}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="Multi-Tunnel Forwarded Ports (T1–T5)" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.MultiTunnelSlotPorts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="pf:SlotForwardedPortItem">
+                                        <Grid Margin="0,2,0,0"
+                                              ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Grid.Column="0"
+                                                     Width="8"
+                                                     Height="8"
+                                                     VerticalAlignment="Center"
+                                                     Fill="{x:Bind SlotColorBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       VerticalAlignment="Center"
+                                                       Style="{StaticResource BodyTextBlockStyle}"
+                                                       Text="{x:Bind HeaderText}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2"
+                                                       VerticalAlignment="Center"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       Text="{x:Bind PortText}" />
+                                            <Button Grid.Column="3"
+                                                    Padding="8,3"
+                                                    Click="OnCopySlotPortClick"
+                                                    Content="Copy"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Tag="{x:Bind SlotId}"
+                                                    Visibility="{x:Bind HasActivePort, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </Grid>
                 </controls:SettingsExpander.Items>
                 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -27,12 +27,18 @@ namespace ProtonVPN.Vpn.PortMapping.UdpClients;
 
 public class UdpClientWrapper : IUdpClientWrapper
 {
+    private readonly IPAddress? _localBindAddress;
     private UdpClient? _udpClient;
     private IPEndPoint? _endpoint;
 
+    public UdpClientWrapper(IPAddress? localBindAddress = null)
+    {
+        _localBindAddress = localBindAddress;
+    }
+
     public void Start(IPEndPoint endpoint)
     {
-        _udpClient = new();
+        _udpClient = CreateUdpClient();
         _endpoint = endpoint;
     }
 
@@ -77,7 +83,14 @@ public class UdpClientWrapper : IUdpClientWrapper
     public void Reset()
     {
         Stop();
-        _udpClient = new();
+        _udpClient = CreateUdpClient();
+    }
+
+    private UdpClient CreateUdpClient()
+    {
+        return _localBindAddress is not null
+            ? new UdpClient(new IPEndPoint(_localBindAddress, 0))
+            : new UdpClient();
     }
 
     public void Dispose()

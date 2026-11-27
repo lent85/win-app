@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -17,7 +17,17 @@
  * along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using ProtonVPN.Common.Legacy.PortForwarding;
+
 namespace ProtonVPN.Client.Logic.Connection.Contracts;
+
+public sealed record SlotPortForwardingState(
+    string SlotId,
+    int? ActivePort,
+    PortMappingStatus Status,
+    bool IsFetchingPort,
+    bool HasError,
+    DateTime? LastPortChangeTimeUtc);
 
 public interface IPortForwardingManager
 {
@@ -25,4 +35,7 @@ public interface IPortForwardingManager
     bool IsFetchingPort { get; }
     bool HasError { get; }
     DateTime? LastPortChangeTimeUtc { get; }
+    IReadOnlyDictionary<string, SlotPortForwardingState> SlotStates { get; }
+    SlotPortForwardingState? GetSlotState(string slotId);
+    int? GetActivePort(string slotId);
 }

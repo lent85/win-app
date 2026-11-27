@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -31,5 +31,11 @@ namespace ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding
 
         [DataMember(Order = 3)]
         public TemporaryMappedPortIpcEntity MappedPort { get; set; }
+
+        [DataMember(Order = 4)]
+        public string? SlotId { get; set; }
+
+        [DataMember(Order = 5)]
+        public bool HasPortForwardingError { get; set; }
     }
 }

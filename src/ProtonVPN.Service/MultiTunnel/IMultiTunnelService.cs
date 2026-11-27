@@ -28,4 +28,6 @@ public interface IMultiTunnelService
     void OnVpnConnected(VpnState state);
     void OnVpnDisconnected(VpnState state, bool isReconnecting);
     void OnServiceStop();
+    void RepeatSlotPortForwardingStates();
+    void OnGlobalFeaturesChanged(int netShieldMode, bool splitTcp, bool moderateNat);
 }

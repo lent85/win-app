@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2024 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -37,10 +37,23 @@ public class PortForwardingClipboardService : IPortForwardingClipboardService
 
     public async Task CopyActivePortToClipboardAsync()
     {
-        int? activePort = _portForwardingManager.ActivePort;
+        await CopyActivePortToClipboardAsync("T1");
+    }
+
+    public async Task CopyActivePortToClipboardAsync(string slotId)
+    {
+        int? activePort = _portForwardingManager.GetActivePort(slotId);
         if (activePort != null)
         {
             await _clipboardEditor.SetTextAsync($"{activePort}");
+        }
+    }
+
+    public async Task CopyPortToClipboardAsync(int port)
+    {
+        if (port > 0)
+        {
+            await _clipboardEditor.SetTextAsync($"{port}");
         }
     }
 }

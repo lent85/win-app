@@ -16,13 +16,17 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts;
+using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Connection.MultiTunnel;
 using ProtonVPN.Client.Logic.Services.Contracts;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Common.Legacy.Abstract;
+using ProtonVPN.Common.Legacy.PortForwarding;
+using ProtonVPN.EntityMapping.Contracts;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
@@ -454,5 +458,73 @@ public class MultiTunnelManagerTests
         Assert.IsTrue(t2.IsConnected);
         Assert.AreEqual("US-NY#10", t2.ServerName);
         Assert.AreEqual("185.159.158.10", t2.EntryIp);
+    }
+
+    [TestMethod]
+    public async Task SetSlotPortForwardingOverrideAsync_ResolvesGlobalAndPerSlotOverridesInPolicy()
+    {
+        _settings.IsPortForwardingEnabled.Returns(true);
+        MultiTunnelManager manager = CreateManager();
+        await manager.AddSlotAsync("NL", "NL#Fastest");
+
+        Assert.IsTrue(manager.IsSlotPortForwardingEnabled("T1"));
+        Assert.IsTrue(manager.IsSlotPortForwardingEnabled("T2"));
+
+        await manager.SetSlotPortForwardingOverrideAsync("T2", false);
+        Assert.IsTrue(manager.IsSlotPortForwardingEnabled("T1"));
+        Assert.IsFalse(manager.IsSlotPortForwardingEnabled("T2"));
+
+        MultiTunnelPolicyIpcEntity policy = manager.BuildIpcPolicy();
+        Assert.IsTrue(policy.TunnelSlots.First(s => s.SlotId == "T1").PortForwardingEnabled);
+        Assert.IsFalse(policy.TunnelSlots.First(s => s.SlotId == "T2").PortForwardingEnabled);
+
+        MultiTunnelManager reloaded = CreateManager();
+        Assert.IsFalse(reloaded.IsSlotPortForwardingEnabled("T2"));
+    }
+
+    [TestMethod]
+    public void PortForwardingManager_TracksIndependentPortsPerSlot()
+    {
+        IEntityMapper mapper = Substitute.For<IEntityMapper>();
+        mapper.Map<PortForwardingStateIpcEntity, PortForwardingState>(Arg.Any<PortForwardingStateIpcEntity>())
+            .Returns(ci =>
+            {
+                PortForwardingStateIpcEntity src = ci.Arg<PortForwardingStateIpcEntity>();
+                return new PortForwardingState
+                {
+                    Status = (PortMappingStatus)(int)src.Status,
+                    MappedPort = src.MappedPort is null
+                        ? null
+                        : new TemporaryMappedPort
+                        {
+                            MappedPort = new MappedPort(src.MappedPort.InternalPort, src.MappedPort.ExternalPort),
+                            Lifetime = src.MappedPort.Lifetime,
+                            ExpirationDateUtc = src.MappedPort.ExpirationDateUtc,
+                        },
+                };
+            });
+
+        _connectionManager.IsConnected.Returns(true);
+        PortForwardingManager pfManager = new(_eventMessageSender, mapper, _logger, _connectionManager);
+
+        pfManager.Receive(new PortForwardingStateIpcEntity
+        {
+            SlotId = "T2",
+            Status = PortMappingStatusIpcEntity.SleepingUntilRefresh,
+            MappedPort = new TemporaryMappedPortIpcEntity { InternalPort = 41234, ExternalPort = 41234 },
+        });
+        pfManager.Receive(new PortForwardingStateIpcEntity
+        {
+            SlotId = "T3",
+            Status = PortMappingStatusIpcEntity.SleepingUntilRefresh,
+            MappedPort = new TemporaryMappedPortIpcEntity { InternalPort = 52345, ExternalPort = 52345 },
+        });
+
+        Assert.AreEqual(41234, pfManager.GetActivePort("T2"));
+        Assert.AreEqual(52345, pfManager.GetActivePort("T3"));
+        Assert.IsNull(pfManager.ActivePort);
+
+        _eventMessageSender.Received().Send(Arg.Is<PortForwardingPortChangedMessage>(m => m.SlotId == "T2" && m.ActivePort == 41234));
+        _eventMessageSender.Received().Send(Arg.Is<PortForwardingPortChangedMessage>(m => m.SlotId == "T3" && m.ActivePort == 52345));
     }
 }

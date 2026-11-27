@@ -27,6 +27,8 @@ public interface IMultiTunnelManager
 
     Task SetEnabledAsync(bool enabled);
     Task SetDefaultRoutingAsync(RuleTargetTypeIpcEntity defaultTargetType, string defaultTunnelId);
+    Task SetSlotPortForwardingOverrideAsync(string slotId, bool? overrideValue);
+    bool IsSlotPortForwardingEnabled(string slotId);
     Task<MultiTunnelSlotConfig?> AddSlotAsync(string countryCode, string serverName, string city = "", string entryIp = "", string exitIp = "");
     Task UpdateSlotLocationAsync(string slotId, string countryCode, string serverName, string city = "", string entryIp = "", string exitIp = "");
     Task RemoveSlotAsync(string slotId);

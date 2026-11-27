@@ -60,4 +60,12 @@ public sealed partial class PortForwardingWidgetView : IContextAware
     {
         ViewModel.IsFeatureFlyoutOpened = false;
     }
+
+    private async void OnCopySlotPortClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            await ViewModel.CopySlotPortAsync(slotId);
+        }
+    }
 }

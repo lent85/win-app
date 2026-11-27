@@ -87,6 +87,22 @@ public sealed partial class MultiTunnelHomePanelView : IContextAware
         }
     }
 
+    private void OnCopySlotPortClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            RunSafeAsync(() => ViewModel.CopySlotPortAsync(slotId));
+        }
+    }
+
+    private void OnToggleSlotPortForwardingClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            RunSafeAsync(() => ViewModel.ToggleSlotPortForwardingAsync(slotId));
+        }
+    }
+
     private void OnRuleEnabledClick(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox { Tag: Guid ruleId } cb)

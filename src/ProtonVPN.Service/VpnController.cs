@@ -179,6 +179,7 @@ public class VpnController : IVpnController
     public async Task RepeatPortForwardingState(CancellationToken cancelToken)
     {
         _portMappingProtocolClient.RepeatState();
+        _multiTunnelService.RepeatSlotPortForwardingStates();
     }
 
     public async Task RequestNetShieldStats(CancellationToken cancelToken)

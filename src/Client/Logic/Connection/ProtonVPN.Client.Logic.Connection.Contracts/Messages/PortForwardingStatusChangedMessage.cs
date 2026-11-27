@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -24,9 +24,11 @@ namespace ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 public class PortForwardingStatusChangedMessage
 {
     public PortMappingStatus Status { get; }
+    public string SlotId { get; }
 
-    public PortForwardingStatusChangedMessage(PortMappingStatus status)
+    public PortForwardingStatusChangedMessage(PortMappingStatus status, string slotId = "T1")
     {
         Status = status;
+        SlotId = string.IsNullOrWhiteSpace(slotId) ? "T1" : slotId.Trim().ToUpperInvariant();
     }
 }

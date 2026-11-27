@@ -99,12 +99,13 @@ the Free Software Foundation, either version 3 of the License, or
                                         BorderBrush="{ThemeResource BorderWeakColorBrush}"
                                         BorderThickness="1"
                                         CornerRadius="6">
-                                    <Grid ColumnSpacing="8">
+                                    <Grid ColumnSpacing="6">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="28" />
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
@@ -138,6 +139,15 @@ the Free Software Foundation, either version 3 of the License, or
                                                    TextTrimming="CharacterEllipsis" />
 
                                         <Button Grid.Column="4"
+                                                Padding="6,3"
+                                                Click="OnCopySlotPortClick"
+                                                Content="{x:Bind PortForwardingBadgeText}"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{x:Bind SlotId}"
+                                                ToolTipService.ToolTip="{x:Bind PortForwardingTooltip}"
+                                                Visibility="{x:Bind ShowPortForwardingBadge, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                        <Button Grid.Column="5"
                                                 Padding="8,4"
                                                 Click="OnConnectSlotClick"
                                                 Content="{x:Bind ConnectButtonText}"

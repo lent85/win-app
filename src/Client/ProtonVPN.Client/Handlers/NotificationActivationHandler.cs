@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2024 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -59,6 +59,13 @@ public class NotificationActivationHandler : IHandler,
 
     private async Task HandleCustomActivationActionAsync(string argument)
     {
+        if (argument.StartsWith($"{NotificationArguments.COPY_PORT_FORWARDING_PORT_TO_CLIPBOARD}:", StringComparison.Ordinal))
+        {
+            string slotId = argument[(NotificationArguments.COPY_PORT_FORWARDING_PORT_TO_CLIPBOARD.Length + 1)..];
+            _uiThreadDispatcher.TryEnqueue(() => _portForwardingClipboardService.CopyActivePortToClipboardAsync(slotId));
+            return;
+        }
+
         switch (argument)
         {
             case NotificationArguments.UPGRADE:

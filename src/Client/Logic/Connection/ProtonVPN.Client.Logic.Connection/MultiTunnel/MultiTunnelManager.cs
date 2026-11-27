@@ -14,17 +14,27 @@ using System.Text.Json;
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.Models;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Locations.Countries;
+using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Locations.Servers;
 using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Logic.Connection.Contracts.RequestCreators;
+using ProtonVPN.Client.Logic.Servers.Contracts;
+using ProtonVPN.Client.Logic.Servers.Contracts.Enums;
+using ProtonVPN.Client.Logic.Servers.Contracts.Extensions;
+using ProtonVPN.Client.Logic.Servers.Contracts.Models;
 using ProtonVPN.Client.Logic.Services.Contracts;
 using ProtonVPN.Client.Settings.Contracts;
+using ProtonVPN.Client.Settings.Contracts.Messages;
 using ProtonVPN.Common.Core.Extensions;
 using ProtonVPN.Common.Legacy.Abstract;
+using ProtonVPN.Common.Legacy.PortForwarding;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.ConnectionLogs;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 
@@ -32,7 +42,10 @@ namespace ProtonVPN.Client.Logic.Connection.MultiTunnel;
 
 public sealed class MultiTunnelManager : IMultiTunnelManager,
     IEventMessageReceiver<ConnectionStatusChangedMessage>,
-    IEventMessageReceiver<ConnectionDetailsChangedMessage>
+    IEventMessageReceiver<ConnectionDetailsChangedMessage>,
+    IEventMessageReceiver<SettingChangedMessage>,
+    IEventMessageReceiver<PortForwardingPortChangedMessage>,
+    IEventMessageReceiver<PortForwardingStatusChangedMessage>
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -46,6 +59,9 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
     private readonly IConnectionManager _connectionManager;
     private readonly IEventMessageSender _eventMessageSender;
     private readonly IConnectionRequestCreator? _connectionRequestCreator;
+    private readonly IServersLoader? _serversLoader;
+    private readonly IPortForwardingManager? _portForwardingManager;
+    private readonly IMainSettingsRequestCreator? _mainSettingsRequestCreator;
 
     private readonly object _lock = new();
     private readonly HashSet<string> _busySlots = new(StringComparer.OrdinalIgnoreCase);
@@ -105,7 +121,10 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         IVpnServiceCaller vpnServiceCaller,
         IConnectionManager connectionManager,
         IEventMessageSender eventMessageSender,
-        IConnectionRequestCreator? connectionRequestCreator = null)
+        IConnectionRequestCreator? connectionRequestCreator = null,
+        IServersLoader? serversLoader = null,
+        IPortForwardingManager? portForwardingManager = null,
+        IMainSettingsRequestCreator? mainSettingsRequestCreator = null)
     {
         _logger = logger;
         _settings = settings;
@@ -113,6 +132,9 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         _connectionManager = connectionManager;
         _eventMessageSender = eventMessageSender;
         _connectionRequestCreator = connectionRequestCreator;
+        _serversLoader = serversLoader;
+        _portForwardingManager = portForwardingManager;
+        _mainSettingsRequestCreator = mainSettingsRequestCreator;
 
         LoadFromSettings();
         ReconcileWithServiceAsync().FireAndForget();
@@ -146,6 +168,7 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
         NotifyChanged();
         await SyncPolicyToServiceAsync();
+        await ApplyPrimarySettingsAsync();
     }
 
     public async Task SetDefaultRoutingAsync(RuleTargetTypeIpcEntity defaultTargetType, string defaultTunnelId)
@@ -159,6 +182,87 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
         NotifyChanged();
         await SyncPolicyToServiceAsync();
+    }
+
+    public bool IsSlotPortForwardingEnabled(string slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return _settings.IsPortForwardingEnabled;
+        }
+
+        lock (_lock)
+        {
+            MultiTunnelSlotConfig? slot = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, slotId.Trim(), StringComparison.OrdinalIgnoreCase));
+            return slot is not null
+                ? slot.ResolveEffectivePortForwarding(_settings.IsPortForwardingEnabled)
+                : _settings.IsPortForwardingEnabled;
+        }
+    }
+
+    public async Task SetSlotPortForwardingOverrideAsync(string slotId, bool? overrideValue)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return;
+        }
+
+        string normalizedId = slotId.Trim().ToUpperInvariant();
+        bool changed = false;
+        bool effectivePf = _settings.IsPortForwardingEnabled;
+
+        lock (_lock)
+        {
+            MultiTunnelSlotConfig? slot = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase));
+            if (slot is null || slot.PortForwardingOverride == overrideValue)
+            {
+                return;
+            }
+
+            slot.PortForwardingOverride = overrideValue;
+            effectivePf = slot.ResolveEffectivePortForwarding(_settings.IsPortForwardingEnabled);
+            if (!effectivePf)
+            {
+                slot.ActiveForwardedPort = null;
+                slot.PortForwardingStatus = PortMappingStatus.Stopped;
+                slot.HasPortForwardingError = false;
+            }
+            NormalizeAndPersistLocked();
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        if (IsEnabled && string.Equals(normalizedId, "T1", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyPrimarySettingsAsync();
+        }
+
+        NotifyChanged();
+        await SyncPolicyToServiceAsync();
+    }
+
+    private async Task ApplyPrimarySettingsAsync()
+    {
+        if (!_connectionManager.IsConnected || _mainSettingsRequestCreator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            MainSettingsIpcEntity settings = _mainSettingsRequestCreator.Create(_connectionManager.CurrentConnectionIntent);
+            await _vpnServiceCaller.ApplySettingsAsync(settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn<ConnectionLog>($"MultiTunnelManager: Failed to apply primary tunnel settings: {ex.Message}");
+        }
     }
 
     public async Task<MultiTunnelSlotConfig?> AddSlotAsync(
@@ -330,7 +434,12 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
         NotifyChanged();
 
-        IConnectionIntent intent = new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
+        Server? selectedServer = _serversLoader?.GetServers().FirstOrDefault(s =>
+            string.Equals(s.ExitCountry, slot.CountryCode, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(s.Name, slot.ServerName, StringComparison.OrdinalIgnoreCase));
+        IConnectionIntent intent = selectedServer is not null
+            ? new ConnectionIntent(SingleServerLocationIntent.From(slot.CountryCode, ServerInfo.From(selectedServer.Id, selectedServer.Name)))
+            : new ConnectionIntent(SingleCountryLocationIntent.From(slot.CountryCode));
 
         if (string.Equals(normalizedId, "T1", StringComparison.OrdinalIgnoreCase))
         {
@@ -384,7 +493,15 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
 
         try
         {
+            bool effectivePf = slot.ResolveEffectivePortForwarding(_settings.IsPortForwardingEnabled);
             ConnectionRequestIpcEntity vpnRequest = await _connectionRequestCreator.CreateAsync(intent);
+            bool isP2PServer = PrioritizeServersForSlot(vpnRequest, slot, effectivePf);
+
+            if (vpnRequest.Config is not null)
+            {
+                vpnRequest.Config.PortForwarding = effectivePf;
+            }
+
             MultiTunnelSlotConnectionRequestIpcEntity slotRequest = new()
             {
                 SlotId = slot.SlotId,
@@ -394,6 +511,8 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                 CountryCode = slot.CountryCode,
                 ServerName = slot.ServerName,
                 ConnectionRequest = vpnRequest,
+                PortForwardingEnabled = effectivePf,
+                IsP2PServer = isP2PServer,
             };
 
             Result<MultiTunnelSlotConnectionResultIpcEntity> ipcResult = await _vpnServiceCaller.ConnectMultiTunnelSlotAsync(slotRequest);
@@ -451,13 +570,27 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                     target.LastError = null;
                     if (!string.IsNullOrWhiteSpace(ipcResult.Value.ConnectedServerName))
                     {
-                        target.ServerName = ipcResult.Value.ConnectedServerName;
+                        target.ServerName = ResolveDisplayServerName(ipcResult.Value.ConnectedServerName, ipcResult.Value.ConnectedEntryIp)
+                            ?? ipcResult.Value.ConnectedServerName;
                     }
                     if (!string.IsNullOrWhiteSpace(ipcResult.Value.ConnectedEntryIp))
                     {
                         target.EntryIp = ipcResult.Value.ConnectedEntryIp;
                         target.ExitIp = ipcResult.Value.ConnectedEntryIp;
                     }
+                    target.IsP2PServer = ResolveIsP2PServer(
+                        ipcResult.Value.ConnectedServerName,
+                        ipcResult.Value.ConnectedEntryIp,
+                        ipcResult.Value.IsP2PServer);
+
+                    if (_portForwardingManager?.GetSlotState(normalizedId) is { } livePf)
+                    {
+                        target.ActiveForwardedPort = livePf.ActivePort;
+                        target.PortForwardingStatus = livePf.Status;
+                        target.HasPortForwardingError = livePf.HasError;
+                        target.LastPortChangeTimeUtc = livePf.LastPortChangeTimeUtc;
+                    }
+
                     NormalizeAndPersistLocked();
                 }
             }
@@ -542,6 +675,11 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                 {
                     target.IsConnected = false;
                     target.IsConnecting = false;
+                    target.IsP2PServer = false;
+                    target.ActiveForwardedPort = null;
+                    target.PortForwardingStatus = PortMappingStatus.Stopped;
+                    target.HasPortForwardingError = false;
+                    target.LastPortChangeTimeUtc = null;
                     NormalizeAndPersistLocked();
                 }
             }
@@ -1003,6 +1141,28 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                             localSlot.ExitIp = svcSlot.ExitIp;
                             anyChanged = true;
                         }
+                        if (localSlot.IsP2PServer != svcSlot.IsP2PServer)
+                        {
+                            localSlot.IsP2PServer = svcSlot.IsP2PServer;
+                            anyChanged = true;
+                        }
+                        int? svcPort = svcSlot.ActiveForwardedPort > 0 ? svcSlot.ActiveForwardedPort : null;
+                        if (localSlot.ActiveForwardedPort != svcPort)
+                        {
+                            localSlot.ActiveForwardedPort = svcPort;
+                            anyChanged = true;
+                        }
+                        PortMappingStatus svcPfStatus = (PortMappingStatus)(int)svcSlot.PortForwardingStatus;
+                        if (localSlot.PortForwardingStatus != svcPfStatus)
+                        {
+                            localSlot.PortForwardingStatus = svcPfStatus;
+                            anyChanged = true;
+                        }
+                        if (localSlot.HasPortForwardingError != svcSlot.HasPortForwardingError)
+                        {
+                            localSlot.HasPortForwardingError = svcSlot.HasPortForwardingError;
+                            anyChanged = true;
+                        }
                     }
                 }
 
@@ -1080,6 +1240,11 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                         ServerName = s.ServerName,
                         EntryIp = s.EntryIp,
                         ExitIp = s.ExitIp,
+                        PortForwardingEnabled = s.ResolveEffectivePortForwarding(_settings.IsPortForwardingEnabled),
+                        ActiveForwardedPort = s.ActiveForwardedPort ?? 0,
+                        PortForwardingStatus = (PortMappingStatusIpcEntity)(int)s.PortForwardingStatus,
+                        IsP2PServer = s.IsP2PServer,
+                        HasPortForwardingError = s.HasPortForwardingError,
                         IsDefaultRouteTunnel = s.IsDefaultRouteTunnel,
                     })
                     .ToList(),
@@ -1116,6 +1281,68 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         UpdatePrimarySlotFromConnectionManager();
     }
 
+    public void Receive(SettingChangedMessage message)
+    {
+        if (message.PropertyName == nameof(ISettings.IsPortForwardingEnabled))
+        {
+            NotifyChanged();
+            SyncPolicyToServiceAsync().FireAndForget();
+        }
+    }
+
+    public void Receive(PortForwardingPortChangedMessage message)
+    {
+        UpdateSlotPortForwardingFromManager(message.SlotId);
+    }
+
+    public void Receive(PortForwardingStatusChangedMessage message)
+    {
+        UpdateSlotPortForwardingFromManager(message.SlotId);
+    }
+
+    private void UpdateSlotPortForwardingFromManager(string slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId) || _portForwardingManager is null)
+        {
+            return;
+        }
+
+        string normalizedId = slotId.Trim().ToUpperInvariant();
+        SlotPortForwardingState? pfState = _portForwardingManager.GetSlotState(normalizedId);
+        if (pfState is null)
+        {
+            return;
+        }
+
+        bool changed = false;
+        lock (_lock)
+        {
+            MultiTunnelSlotConfig? slot = _config.Slots.FirstOrDefault(s =>
+                string.Equals(s.SlotId, normalizedId, StringComparison.OrdinalIgnoreCase));
+            if (slot is null)
+            {
+                return;
+            }
+
+            if (slot.ActiveForwardedPort != pfState.ActivePort ||
+                slot.PortForwardingStatus != pfState.Status ||
+                slot.HasPortForwardingError != pfState.HasError ||
+                slot.LastPortChangeTimeUtc != pfState.LastPortChangeTimeUtc)
+            {
+                slot.ActiveForwardedPort = pfState.ActivePort;
+                slot.PortForwardingStatus = pfState.Status;
+                slot.HasPortForwardingError = pfState.HasError;
+                slot.LastPortChangeTimeUtc = pfState.LastPortChangeTimeUtc;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            NotifyChanged();
+        }
+    }
+
     private void UpdatePrimarySlotFromConnectionManager()
     {
         bool shouldSync;
@@ -1144,6 +1371,23 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
                 t1.City = details.City;
                 t1.EntryIp = details.EntryIpAddress ?? string.Empty;
                 t1.ExitIp = details.ServerIpAddress?.ToString() ?? string.Empty;
+                t1.IsP2PServer = details.IsP2P;
+
+                if (_portForwardingManager?.GetSlotState("T1") is { } pf)
+                {
+                    t1.ActiveForwardedPort = pf.ActivePort;
+                    t1.PortForwardingStatus = pf.Status;
+                    t1.HasPortForwardingError = pf.HasError;
+                    t1.LastPortChangeTimeUtc = pf.LastPortChangeTimeUtc;
+                }
+            }
+            else if (!_connectionManager.IsConnected)
+            {
+                t1.IsP2PServer = false;
+                t1.ActiveForwardedPort = null;
+                t1.PortForwardingStatus = PortMappingStatus.Stopped;
+                t1.HasPortForwardingError = false;
+                t1.LastPortChangeTimeUtc = null;
             }
 
             NormalizeAndPersistLocked();
@@ -1155,6 +1399,115 @@ public sealed class MultiTunnelManager : IMultiTunnelManager,
         {
             SyncPolicyToServiceAsync().FireAndForget();
         }
+    }
+
+    private bool PrioritizeServersForSlot(ConnectionRequestIpcEntity vpnRequest, MultiTunnelSlotConfig slot, bool effectivePortForwarding)
+    {
+        if (vpnRequest.Servers is null || vpnRequest.Servers.Length == 0 || _serversLoader is null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<Server> countryServers = _serversLoader.GetServers()
+            .Where(s => string.Equals(s.ExitCountry, slot.CountryCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(slot.ServerName) &&
+            !slot.ServerName.Trim().EndsWith("#Fastest", StringComparison.OrdinalIgnoreCase))
+        {
+            Server? explicitServer = countryServers.FirstOrDefault(s =>
+                string.Equals(s.Name, slot.ServerName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            HashSet<string> preferredIps = new(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(slot.EntryIp))
+            {
+                preferredIps.Add(slot.EntryIp.Trim());
+            }
+            if (explicitServer is not null)
+            {
+                foreach (PhysicalServer ps in explicitServer.Servers)
+                {
+                    if (!string.IsNullOrWhiteSpace(ps.EntryIp))
+                    {
+                        preferredIps.Add(ps.EntryIp);
+                    }
+                }
+            }
+
+            if (preferredIps.Count > 0)
+            {
+                vpnRequest.Servers = vpnRequest.Servers
+                    .OrderByDescending(s => !string.IsNullOrWhiteSpace(s.Ip) && preferredIps.Contains(s.Ip))
+                    .ToArray();
+            }
+
+            if (explicitServer is not null)
+            {
+                return explicitServer.Features.IsSupported(ServerFeatures.P2P);
+            }
+        }
+
+        if (effectivePortForwarding)
+        {
+            HashSet<string> p2pIps = countryServers
+                .Where(s => s.Features.IsSupported(ServerFeatures.P2P))
+                .SelectMany(s => s.Servers)
+                .Select(ps => ps.EntryIp)
+                .Where(ip => !string.IsNullOrWhiteSpace(ip))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (p2pIps.Count > 0)
+            {
+                vpnRequest.Servers = vpnRequest.Servers
+                    .OrderByDescending(s => !string.IsNullOrWhiteSpace(s.Ip) && p2pIps.Contains(s.Ip))
+                    .ToArray();
+            }
+        }
+
+        VpnServerIpcEntity firstServer = vpnRequest.Servers[0];
+        return ResolveIsP2PServer(firstServer.Name, firstServer.Ip, defaultValue: false);
+    }
+
+    private bool ResolveIsP2PServer(string? serverNameOrDomain, string? entryIp, bool defaultValue)
+    {
+        if (_serversLoader is null)
+        {
+            return defaultValue;
+        }
+
+        Server? matched = FindLogicalServer(serverNameOrDomain, entryIp);
+        return matched is not null ? matched.Features.IsSupported(ServerFeatures.P2P) : defaultValue;
+    }
+
+    private string? ResolveDisplayServerName(string? serverNameOrDomain, string? entryIp)
+    {
+        return FindLogicalServer(serverNameOrDomain, entryIp)?.Name;
+    }
+
+    private Server? FindLogicalServer(string? serverNameOrDomain, string? entryIp)
+    {
+        if (_serversLoader is null)
+        {
+            return null;
+        }
+
+        IEnumerable<Server> servers = _serversLoader.GetServers();
+
+        if (!string.IsNullOrWhiteSpace(serverNameOrDomain))
+        {
+            string trimmed = serverNameOrDomain.Trim();
+            Server? byName = servers.FirstOrDefault(s =>
+                string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(s.Domain, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                s.Servers.Any(ps => string.Equals(ps.Domain, trimmed, StringComparison.OrdinalIgnoreCase)));
+            if (byName is not null)
+            {
+                return byName;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(entryIp) ? null : servers.FirstOrDefault(s =>
+            s.Servers.Any(ps => string.Equals(ps.EntryIp, entryIp, StringComparison.OrdinalIgnoreCase)));
     }
 
     private void LoadFromSettings()

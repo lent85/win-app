@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -35,6 +35,12 @@ public class PortForwardingManager : IPortForwardingManager, IEventMessageReceiv
     private readonly ILogger _logger;
     private readonly IConnectionManager _connectionManager;
 
+    private readonly object _lock = new();
+    private readonly Dictionary<string, int?> _portsBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PortMappingStatus> _statusBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _hasErrorBySlot = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTime> _lastPortChangeBySlot = new(StringComparer.OrdinalIgnoreCase);
+
     private DateTime _lastPortChangeTimeUtc;
     private int? _port;
     private PortMappingStatus _status;
@@ -57,6 +63,38 @@ public class PortForwardingManager : IPortForwardingManager, IEventMessageReceiv
 
     public DateTime? LastPortChangeTimeUtc => ActivePort.HasValue ? _lastPortChangeTimeUtc : null;
 
+    public IReadOnlyDictionary<string, SlotPortForwardingState> SlotStates
+    {
+        get
+        {
+            lock (_lock)
+            {
+                Dictionary<string, SlotPortForwardingState> result = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["T1"] = new SlotPortForwardingState(
+                        "T1",
+                        ActivePort,
+                        _status,
+                        IsFetchingPort,
+                        HasError,
+                        LastPortChangeTimeUtc)
+                };
+
+                foreach (string slotId in _statusBySlot.Keys.Union(_portsBySlot.Keys, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    result[slotId] = BuildSecondarySlotStateLocked(slotId);
+                }
+
+                return result;
+            }
+        }
+    }
+
     public PortForwardingManager(
         IEventMessageSender eventMessageSender,
         IEntityMapper entityMapper, 
@@ -69,35 +107,145 @@ public class PortForwardingManager : IPortForwardingManager, IEventMessageReceiv
         _connectionManager = connectionManager;
     }
 
+    public SlotPortForwardingState? GetSlotState(string slotId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId))
+        {
+            return null;
+        }
+
+        string normalized = slotId.Trim().ToUpperInvariant();
+        if (string.Equals(normalized, "T1", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SlotPortForwardingState(
+                "T1",
+                ActivePort,
+                _status,
+                IsFetchingPort,
+                HasError,
+                LastPortChangeTimeUtc);
+        }
+
+        lock (_lock)
+        {
+            if (!_statusBySlot.ContainsKey(normalized) && !_portsBySlot.ContainsKey(normalized))
+            {
+                return null;
+            }
+
+            return BuildSecondarySlotStateLocked(normalized);
+        }
+    }
+
+    public int? GetActivePort(string slotId)
+    {
+        return GetSlotState(slotId)?.ActivePort;
+    }
+
     public void Receive(PortForwardingStateIpcEntity message)
     {
         PortForwardingState portForwardingState = _entityMapper.Map<PortForwardingStateIpcEntity, PortForwardingState>(message);
+        string slotId = string.IsNullOrWhiteSpace(message.SlotId) ? "T1" : message.SlotId.Trim().ToUpperInvariant();
 
         int? newPort = portForwardingState.MappedPort?.MappedPort?.ExternalPort;
-        if (_port != newPort)
-        {
-            _logger.Info<AppLog>($"Port forwarding port changed from '{_port}' to '{newPort}'.");
-            _port = newPort;
-            _lastPortChangeTimeUtc = DateTime.UtcNow;
-            NotifyPortChange(newPort);
-        }
-
         PortMappingStatus newStatus = portForwardingState.Status;
-        if (_status != newStatus)
+
+        if (string.Equals(slotId, "T1", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.Info<AppLog>($"Port forwarding status changed from '{_status}' to '{newStatus}'.");
-            _status = newStatus;
-            NotifyStatusChange(newStatus);
+            bool primaryPortChanged;
+            bool primaryStatusChanged;
+            lock (_lock)
+            {
+                primaryPortChanged = _port != newPort;
+                primaryStatusChanged = _status != newStatus;
+                _port = newPort;
+                _status = newStatus;
+                if (primaryPortChanged)
+                {
+                    _lastPortChangeTimeUtc = DateTime.UtcNow;
+                }
+            }
+
+            // Receivers query the manager synchronously, so publish only after the full state is saved.
+            if (primaryPortChanged)
+            {
+                _logger.Info<AppLog>($"Port forwarding port changed to '{newPort}'.");
+                NotifyPortChange(newPort, "T1");
+            }
+
+            if (primaryStatusChanged)
+            {
+                _logger.Info<AppLog>($"Port forwarding status changed to '{newStatus}'.");
+                NotifyStatusChange(newStatus, "T1");
+            }
+
+            return;
+        }
+
+        bool portChanged;
+        bool statusChanged;
+        lock (_lock)
+        {
+            _portsBySlot.TryGetValue(slotId, out int? prevPort);
+            portChanged = prevPort != newPort;
+            if (portChanged)
+            {
+                _portsBySlot[slotId] = newPort;
+                _lastPortChangeBySlot[slotId] = DateTime.UtcNow;
+            }
+
+            _statusBySlot.TryGetValue(slotId, out PortMappingStatus prevStatus);
+            _hasErrorBySlot.TryGetValue(slotId, out bool previousError);
+            bool hasError = message.HasPortForwardingError || newStatus == PortMappingStatus.Error;
+            statusChanged = !_statusBySlot.ContainsKey(slotId) || prevStatus != newStatus || previousError != hasError;
+            _statusBySlot[slotId] = newStatus;
+            _hasErrorBySlot[slotId] = hasError;
+        }
+
+        if (portChanged)
+        {
+            _logger.Info<AppLog>($"Port forwarding [{slotId}] port changed to '{newPort}'.");
+            NotifyPortChange(newPort, slotId);
+        }
+
+        if (statusChanged)
+        {
+            _logger.Info<AppLog>($"Port forwarding [{slotId}] status changed to '{newStatus}'.");
+            NotifyStatusChange(newStatus, slotId);
         }
     }
 
-    private void NotifyPortChange(int? newPort)
+    private SlotPortForwardingState BuildSecondarySlotStateLocked(string slotId)
     {
-        _eventMessageSender.Send(new PortForwardingPortChangedMessage(newPort));
+        _portsBySlot.TryGetValue(slotId, out int? rawPort);
+        _statusBySlot.TryGetValue(slotId, out PortMappingStatus status);
+        _hasErrorBySlot.TryGetValue(slotId, out bool hasExplicitError);
+        _lastPortChangeBySlot.TryGetValue(slotId, out DateTime lastChange);
+
+        int? activePort = status is PortMappingStatus.PortMappingCommunication or PortMappingStatus.SleepingUntilRefresh
+            ? rawPort
+            : null;
+        bool isFetching = status is not PortMappingStatus.Stopped
+            and not PortMappingStatus.Error
+            and not PortMappingStatus.DestroyPortMappingCommunication;
+        bool hasError = hasExplicitError || status is PortMappingStatus.Error;
+
+        return new SlotPortForwardingState(
+            slotId,
+            activePort,
+            status,
+            isFetching,
+            hasError,
+            activePort.HasValue && lastChange != default ? lastChange : null);
     }
 
-    private void NotifyStatusChange(PortMappingStatus newStatus)
+    private void NotifyPortChange(int? newPort, string slotId)
     {
-        _eventMessageSender.Send(new PortForwardingStatusChangedMessage(newStatus));
+        _eventMessageSender.Send(new PortForwardingPortChangedMessage(newPort, slotId));
+    }
+
+    private void NotifyStatusChange(PortMappingStatus newStatus, string slotId)
+    {
+        _eventMessageSender.Send(new PortForwardingStatusChangedMessage(newStatus, slotId));
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2024 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -22,4 +22,6 @@ namespace ProtonVPN.Client.Services.PortForwarding;
 public interface IPortForwardingClipboardService
 {
     Task CopyActivePortToClipboardAsync();
+    Task CopyActivePortToClipboardAsync(string slotId);
+    Task CopyPortToClipboardAsync(int port);
 }

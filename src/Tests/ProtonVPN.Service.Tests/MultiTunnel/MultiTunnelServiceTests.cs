@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using ProtonVPN.Common.Core.Networking;
+using ProtonVPN.Common.Legacy.PortForwarding;
 using ProtonVPN.Common.Legacy.Threading;
 using ProtonVPN.Common.Legacy.Vpn;
 using ProtonVPN.Configurations.Contracts;
@@ -31,6 +33,7 @@ using ProtonVPN.OperatingSystems.Network.Contracts.Routing;
 using ProtonVPN.OperatingSystems.Services.Contracts;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Crypto;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.Service.ControllerRetries;
 using ProtonVPN.Service.Driver;
@@ -687,5 +690,263 @@ public class MultiTunnelServiceTests
 
         service.IsEnabled.Should().BeFalse();
         _wfpManager.Received(1).Disable();
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MultiTunnelSlotRunner_HonorsExplicitServerAndCleansUpCancelledStartup(bool cancelStartup)
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"pvpn-slot-explicit-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            IStaticConfiguration staticConfig = Substitute.For<IStaticConfiguration>();
+            IWireGuardConfigurations wgConfig = Substitute.For<IWireGuardConfigurations>();
+            wgConfig.ConfigFilePath.Returns(Path.Combine(tempDir, "ProtonVPN.conf"));
+            wgConfig.ServicePath.Returns("C:\\Program Files\\Proton\\WireGuardService.exe");
+            wgConfig.ServiceName.Returns("ProtonVPN WireGuard");
+            staticConfig.WireGuard.Returns(wgConfig);
+            staticConfig.GetWireGuardHardwareId().Returns("ProtonVPN-WG");
+
+            PublicKey key = new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.X25519);
+            IEntityMapper mapper = Substitute.For<IEntityMapper>();
+            mapper.Map<VpnServerIpcEntity, VpnHost>(Arg.Any<VpnServerIpcEntity[]>())
+                .Returns([
+                    new VpnHost("us-01.protonvpn.net", "185.159.158.10", string.Empty, key, string.Empty, false, null),
+                    new VpnHost("us-02.protonvpn.net", "185.159.158.20", string.Empty, key, string.Empty, false, null),
+                ]);
+            mapper.Map<VpnCredentialsIpcEntity, VpnCredentials>(Arg.Any<VpnCredentialsIpcEntity>())
+                .Returns(new VpnCredentials(
+                    "CERT",
+                    DateTime.UtcNow.AddDays(1),
+                    new AsymmetricKeyPair(
+                        new SecretKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.Ed25519),
+                        new PublicKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.Ed25519)),
+                    string.Empty,
+                    string.Empty));
+            mapper.Map<VpnConfigIpcEntity, VpnConfig>(Arg.Any<VpnConfigIpcEntity>())
+                .Returns(new VpnConfig(new VpnConfigParameters()));
+
+            IX25519KeyGenerator x25519 = Substitute.For<IX25519KeyGenerator>();
+            x25519.FromEd25519SecretKey(Arg.Any<SecretKey>())
+                .Returns(new SecretKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", KeyAlgorithm.X25519));
+
+            IService slotService = Substitute.For<IService>();
+            slotService.IsCreated().Returns(false);
+            slotService.IsRunning().Returns(true);
+            slotService.IsStopped().Returns(false);
+            slotService.StartAsync(Arg.Any<CancellationToken>()).Returns(true);
+            slotService.StopAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+            IServiceFactory serviceFactory = Substitute.For<IServiceFactory>();
+            serviceFactory.Get("ProtonVPN WireGuard T2").Returns(slotService);
+
+            INetworkInterface ethNic = Substitute.For<INetworkInterface>();
+            ethNic.Name.Returns("Ethernet");
+            ethNic.Index.Returns(7u);
+            ethNic.IsActive.Returns(true);
+            ethNic.DefaultGateway.Returns(IPAddress.Parse("192.168.1.1"));
+            ethNic.GetUnicastAddresses().Returns([new NetworkAddress(IPAddress.Parse("192.168.1.50"))]);
+
+            INetworkInterface wgT2Nic = Substitute.For<INetworkInterface>();
+            wgT2Nic.Name.Returns("ProtonVPN-T2");
+            wgT2Nic.Index.Returns(12u);
+            wgT2Nic.GetUnicastAddresses().Returns([new NetworkAddress(IPAddress.Parse("10.3.0.2"))]);
+
+            ISystemNetworkInterfaces networkInterfaces = Substitute.For<ISystemNetworkInterfaces>();
+            networkInterfaces.GetInterfaces().Returns([ethNic, wgT2Nic]);
+
+            IPermittedRemoteAddress permittedRemote = Substitute.For<IPermittedRemoteAddress>();
+            IMultiTunnelSlotPortForwardingManager pfManager = Substitute.For<IMultiTunnelSlotPortForwardingManager>();
+            List<string> lifecycle = [];
+            slotService.IsCreated().Returns(true);
+            pfManager.StopSlotAsync("T2").Returns(_ =>
+            {
+                lifecycle.Add("stop-pf");
+                return Task.CompletedTask;
+            });
+            slotService.StopAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                lifecycle.Add("stop-adapter");
+                return Task.FromResult(true);
+            });
+            TaskCompletionSource pfStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            pfManager.StartSlotAsync(Arg.Any<string>(), Arg.Any<IPAddress>(), Arg.Any<IPAddress>(),
+                Arg.Any<VpnHost>(), Arg.Any<VpnCredentials>(), Arg.Any<VpnConfig>(), Arg.Any<bool>(),
+                Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(pfStarted.Task);
+
+            MultiTunnelSlotRunner runner = new(
+                _logger,
+                staticConfig,
+                mapper,
+                x25519,
+                serviceFactory,
+                Substitute.For<IRoutingTableHelper>(),
+                Substitute.For<IIpv4GatewayResolver>(),
+                _orchestrator,
+                permittedRemote,
+                networkInterfaces,
+                null,
+                pfManager);
+
+            MultiTunnelSlotConnectionRequestIpcEntity req = new()
+            {
+                SlotId = "T2",
+                SlotIndex = 1,
+                ClientIpv4Address = "10.3.0.2",
+                ServerGatewayIpv4Address = "10.3.0.1",
+                CountryCode = "US",
+                ServerName = "us-02.protonvpn.net",
+                PortForwardingEnabled = true,
+                IsP2PServer = true,
+                ConnectionRequest = new ConnectionRequestIpcEntity
+                {
+                    Servers =
+                    [
+                        new VpnServerIpcEntity { Name = "us-01.protonvpn.net", Ip = "185.159.158.10" },
+                        new VpnServerIpcEntity { Name = "us-02.protonvpn.net", Ip = "185.159.158.20" },
+                    ],
+                    Credentials = new VpnCredentialsIpcEntity
+                    {
+                        ClientKeyPair = new AsymmetricKeyPairIpcEntity
+                        {
+                            SecretKey = new SecretKeyIpcEntity { Bytes = new byte[32], Base64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" },
+                            PublicKey = new PublicKeyIpcEntity { Bytes = new byte[32], Base64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" },
+                        },
+                    },
+                    Config = new VpnConfigIpcEntity(),
+                },
+            };
+
+            Task<MultiTunnelSlotConnectionResultIpcEntity> connecting = runner.ConnectSlotAsync(req, CancellationToken.None);
+            connecting.IsCompleted.Should().BeFalse("slot startup must finish before disconnect can tear it down");
+            lifecycle.Should().Equal("stop-pf", "stop-adapter");
+            if (cancelStartup)
+            {
+                pfStarted.SetCanceled();
+                MultiTunnelSlotConnectionResultIpcEntity cancelled = await connecting;
+                cancelled.Success.Should().BeFalse();
+                _orchestrator.GetSlotStates()["T2"].IsConnected.Should().BeFalse();
+                lifecycle.Should().Equal("stop-pf", "stop-adapter", "stop-pf", "stop-adapter");
+                return;
+            }
+            pfStarted.SetResult();
+            MultiTunnelSlotConnectionResultIpcEntity result = await connecting;
+
+            result.Success.Should().BeTrue();
+            result.ConnectedServerName.Should().Be("us-02.protonvpn.net");
+            result.ConnectedEntryIp.Should().Be("185.159.158.20");
+            result.IsP2PServer.Should().BeTrue();
+            permittedRemote.Received().Add(Arg.Is<string[]>(ips => ips.Contains("185.159.158.20")), Arg.Any<ProtonVPN.NetworkFilter.Action>());
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public void MultiTunnelService_ExposesAndUpdatesSlotPortForwardingState()
+    {
+        IMultiTunnelSlotRunner slotRunner = Substitute.For<IMultiTunnelSlotRunner>();
+        IMultiTunnelSlotPortForwardingManager pfManager = Substitute.For<IMultiTunnelSlotPortForwardingManager>();
+        MultiTunnelService service = new(
+            _logger,
+            _orchestrator,
+            _wfpManager,
+            _calloutDriver,
+            _networkUtilities,
+            _networkInterfaces,
+            _config,
+            _serviceSettings,
+            slotRunner,
+            null,
+            pfManager)
+        {
+            EnableBackgroundDnsResolution = false,
+            EnableAppProcessWatcher = false,
+        };
+
+        _orchestrator.ActivateSlot("T3", "NL", "NL#5", "185.159.158.30", "185.159.158.30", interfaceIndex: 15);
+        pfManager.GetSlotState("T3").Returns(new MultiTunnelSlotPortForwardingState(
+            "T3",
+            PortForwardingEnabled: false,
+            IsP2PServer: true,
+            HasPortForwardingError: false,
+            new PortForwardingState
+            {
+                Status = PortMappingStatus.SleepingUntilRefresh,
+                MappedPort = new TemporaryMappedPort
+                {
+                    MappedPort = new MappedPort(51234, 51234),
+                    Lifetime = TimeSpan.FromHours(2),
+                    ExpirationDateUtc = DateTime.UtcNow.AddHours(2),
+                },
+            }));
+
+        service.ApplyPolicy(new MultiTunnelPolicyIpcEntity
+        {
+            IsMultiTunnelEnabled = true,
+            TunnelSlots =
+            [
+                new TunnelSlotStateIpcEntity
+                {
+                    SlotId = "T3",
+                    SlotIndex = 2,
+                    Status = VpnStatusIpcEntity.Connected,
+                    PortForwardingEnabled = true,
+                },
+            ],
+        });
+
+        pfManager.Received(1).UpdateSlotFeaturesAsync("T3", true, Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<bool>());
+
+        MultiTunnelPolicyIpcEntity current = service.GetCurrentPolicy();
+        TunnelSlotStateIpcEntity t3 = current.TunnelSlots.Single(s => s.SlotId == "T3");
+        t3.ActiveForwardedPort.Should().Be(51234);
+        t3.PortForwardingStatus.Should().Be(PortMappingStatusIpcEntity.SleepingUntilRefresh);
+        t3.IsP2PServer.Should().BeTrue();
+
+        service.OnServiceStop();
+        pfManager.Received(1).StopAllAsync();
+    }
+
+    [TestMethod]
+    public void CurrentPolicy_DoesNotReviveStalePortsFromClientMetadata()
+    {
+        IMultiTunnelSlotPortForwardingManager pfManager = Substitute.For<IMultiTunnelSlotPortForwardingManager>();
+        MultiTunnelService service = new(_logger, _orchestrator, _wfpManager, _calloutDriver,
+            _networkUtilities, _networkInterfaces, _config, _serviceSettings,
+            Substitute.For<IMultiTunnelSlotRunner>(), slotPortForwardingManager: pfManager)
+        {
+            EnableBackgroundDnsResolution = false,
+            EnableAppProcessWatcher = false,
+        };
+        _orchestrator.ActivateSlot("T2", "NL", "NL#1", "185.159.158.10", "185.159.158.10", 12);
+        service.ApplyPolicy(new MultiTunnelPolicyIpcEntity
+        {
+            IsMultiTunnelEnabled = true,
+            TunnelSlots = [new TunnelSlotStateIpcEntity
+            {
+                SlotId = "T2", PortForwardingEnabled = true, ActiveForwardedPort = 43210,
+                PortForwardingStatus = PortMappingStatusIpcEntity.SleepingUntilRefresh,
+                HasPortForwardingError = true,
+            }],
+        });
+        pfManager.GetSlotState("T2").Returns(new MultiTunnelSlotPortForwardingState(
+            "T2", true, true, false, PortForwardingState.Default));
+
+        TunnelSlotStateIpcEntity live = service.GetCurrentPolicy().TunnelSlots.Single(s => s.SlotId == "T2");
+        live.ActiveForwardedPort.Should().Be(0);
+        live.PortForwardingStatus.Should().Be(PortMappingStatusIpcEntity.Stopped);
+
+        _orchestrator.DeactivateSlot("T2", out _);
+        pfManager.GetSlotState("T2").Returns((MultiTunnelSlotPortForwardingState)null);
+        TunnelSlotStateIpcEntity disconnected = service.GetCurrentPolicy().TunnelSlots.Single(s => s.SlotId == "T2");
+        disconnected.ActiveForwardedPort.Should().Be(0);
+        disconnected.PortForwardingStatus.Should().Be(PortMappingStatusIpcEntity.Stopped);
+        disconnected.HasPortForwardingError.Should().BeFalse();
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2023 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -21,6 +21,7 @@ using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Handlers.Bases;
 using ProtonVPN.Client.Logic.Connection.Contracts;
 using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
+using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
 using ProtonVPN.Client.Notifications.Contracts;
 using ProtonVPN.Client.Settings.Contracts;
 
@@ -31,23 +32,29 @@ public class PortForwardingNotificationHandler : IHandler, IEventMessageReceiver
     private readonly ISettings _settings;
     private readonly IPortForwardingNewPortNotificationSender _portForwardingNewPortNotificationSender;
     private readonly IPortForwardingManager _portForwardingManager;
+    private readonly IMultiTunnelManager _multiTunnelManager;
 
     public PortForwardingNotificationHandler(
         ISettings settings,
         IPortForwardingNewPortNotificationSender portForwardingNewPortNotificationSender,
-        IPortForwardingManager portForwardingManager)
+        IPortForwardingManager portForwardingManager,
+        IMultiTunnelManager multiTunnelManager)
     {
         _settings = settings;
         _portForwardingNewPortNotificationSender = portForwardingNewPortNotificationSender;
         _portForwardingManager = portForwardingManager;
+        _multiTunnelManager = multiTunnelManager;
     }
 
     public void Receive(PortForwardingPortChangedMessage message)
     {
-        int? activePortNumber = _portForwardingManager.ActivePort;
+        int? activePortNumber = _portForwardingManager.GetActivePort(message.SlotId);
         if (activePortNumber is not null && _settings.IsPortForwardingNotificationEnabled)
         {
-            _portForwardingNewPortNotificationSender.Send(activePortNumber.Value);
+            string? slotTag = _multiTunnelManager.IsEnabled || !string.Equals(message.SlotId, "T1", StringComparison.OrdinalIgnoreCase)
+                ? message.SlotId
+                : null;
+            _portForwardingNewPortNotificationSender.Send(activePortNumber.Value, slotTag);
         }
     }
 }

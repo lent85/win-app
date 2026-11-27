@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2026 Proton AG
  *
  * This file is part of ProtonVPN.
@@ -43,6 +43,7 @@ using ProtonVPN.ProcessCommunication.Contracts.Entities.Settings;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Update;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.Service.KillSwitch;
+using ProtonVPN.Service.MultiTunnel;
 using ProtonVPN.Service.Settings;
 using ProtonVPN.Service.StateMachine;
 using ProtonVPN.Vpn.Connection;
@@ -60,6 +61,8 @@ public class ClientControllerSender : IClientController, IClientControllerSender
     private readonly ILocalAgentEventReceiver _localAgentEventReceiver;
     private readonly IVpnConnectionStateMachine _vpnControllerStateMachine;
     private readonly IPortMappingProtocolClient _portMappingProtocolClient;
+    private readonly IMultiTunnelSlotPortForwardingManager? _slotPortForwardingManager;
+    private readonly IMultiTunnelService? _multiTunnelService;
 
     private VpnState _vpnState = VpnState.Default;
     private PortForwardingState? _portForwardingState;
@@ -83,7 +86,9 @@ public class ClientControllerSender : IClientController, IClientControllerSender
         ILocalAgent localAgent,
         ILocalAgentEventReceiver localAgentEventReceiver,
         IVpnConnectionStateMachine vpnControllerStateMachine,
-        IPortMappingProtocolClient portMappingProtocolClient)
+        IPortMappingProtocolClient portMappingProtocolClient,
+        IMultiTunnelSlotPortForwardingManager? slotPortForwardingManager = null,
+        IMultiTunnelService? multiTunnelService = null)
     {
         _killSwitch = killSwitch;
         _logger = logger;
@@ -91,11 +96,18 @@ public class ClientControllerSender : IClientController, IClientControllerSender
         _localAgent = localAgent;
         _localAgentEventReceiver = localAgentEventReceiver;
         _vpnControllerStateMachine = vpnControllerStateMachine;
+        _slotPortForwardingManager = slotPortForwardingManager;
+        _multiTunnelService = multiTunnelService;
 
         _vpnControllerStateMachine.SubscribeToStateChanged(OnVpnStateChangedAsync);
 
         _portMappingProtocolClient = portMappingProtocolClient;
         _portMappingProtocolClient.StateChanged += OnPortForwardingStateChangedAsync;
+
+        if (_slotPortForwardingManager is not null)
+        {
+            _slotPortForwardingManager.SlotStateChanged += OnSlotPortForwardingStateChangedAsync;
+        }
     }
 
     public IAsyncEnumerable<VpnStateIpcEntity> StreamVpnStateChangeAsync(CancellationToken cancelToken)
@@ -287,11 +299,28 @@ public class ClientControllerSender : IClientController, IClientControllerSender
         return logMessage.ToString();
     }
 
+    private async void OnSlotPortForwardingStateChangedAsync(object? sender, MultiTunnelSlotPortForwardingState e)
+    {
+        try
+        {
+            PortForwardingStateIpcEntity stateIpcEntity =
+                _entityMapper.Map<PortForwardingState, PortForwardingStateIpcEntity>(e.State);
+            stateIpcEntity.SlotId = e.SlotId;
+            stateIpcEntity.HasPortForwardingError = e.HasPortForwardingError;
+            await _portForwardingStateChannel.Writer.WriteAsync(stateIpcEntity);
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug<ProcessCommunicationLog>($"Failed to send slot {e.SlotId} Port Forwarding state: {ex.Message}");
+        }
+    }
+
     private async Task SendPortForwardingStateChangeAsync(PortForwardingState state)
     {
         _logger.Debug<ProcessCommunicationLog>($"Sending Port Forwarding state - {GetPortForwardingStateLogMessage(state)}");
-        PortForwardingStateIpcEntity stateIpcEntity = 
+        PortForwardingStateIpcEntity stateIpcEntity =
             _entityMapper.Map<PortForwardingState, PortForwardingStateIpcEntity>(state);
+        stateIpcEntity.SlotId = "T1";
         await _portForwardingStateChannel.Writer.WriteAsync(stateIpcEntity);
     }
 
@@ -314,6 +343,8 @@ public class ClientControllerSender : IClientController, IClientControllerSender
 
     public async void OnServiceSettingsChanged(MainSettingsIpcEntity settings)
     {
+        _multiTunnelService?.OnGlobalFeaturesChanged(settings.NetShieldMode, settings.SplitTcp, settings.ModerateNat);
+
         VpnState vpnState = _vpnState;
         if (vpnState.Status == VpnStatus.Disconnected)
         {

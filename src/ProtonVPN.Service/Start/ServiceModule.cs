@@ -96,6 +96,7 @@ internal class ServiceModule : Module
         builder.RegisterType<SplitTunnelClient>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<MultiTunnelOrchestrator>().AsSelf().SingleInstance();
         builder.RegisterType<MultiTunnelWfpManager>().As<IMultiTunnelWfpManager>().AsSelf().SingleInstance();
+        builder.RegisterType<MultiTunnelSlotPortForwardingManager>().As<IMultiTunnelSlotPortForwardingManager>().SingleInstance();
         builder.RegisterType<MultiTunnelSlotRunner>().As<IMultiTunnelSlotRunner>().SingleInstance();
         builder.RegisterType<MultiTunnelService>().As<IMultiTunnelService>().SingleInstance();
         builder.RegisterType<HttpClients>().AsImplementedInterfaces().SingleInstance();

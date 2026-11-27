@@ -259,7 +259,9 @@ try {
                 $TestOutDir = Join-Path $RepoRoot "src\bin\tests\$TestName"
                 if (Test-Path $TestOutDir) { Remove-Item -Recurse -Force $TestOutDir }
                 Write-Host "==> Testing $Tp..."
-                dotnet test $TpPath -c $Configuration -o $TestOutDir
+                # Serialize MSBuild (-m:1) because -o sets OutputPath globally across all referenced projects
+                # (which have PreserveCompilationContext=true), causing parallel CopyRefAssemblies/IncrementalClean file-lock races.
+                dotnet test $TpPath -c $Configuration -o $TestOutDir -m:1 -p:BuildInParallel=false
                 if ($LASTEXITCODE -ne 0) { throw "dotnet test failed for $Tp" }
             }
         }

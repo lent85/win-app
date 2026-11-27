@@ -78,6 +78,22 @@ public sealed partial class MultiTunnelPageView : IContextAware
         }
     }
 
+    private void OnCopySlotPortClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            RunSafeAsync(() => ViewModel.CopySlotPortAsync(slotId));
+        }
+    }
+
+    private void OnToggleSlotPortForwardingClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            RunSafeAsync(() => ViewModel.ToggleSlotPortForwardingAsync(slotId));
+        }
+    }
+
     private void OnAssignTemplatesToSlotClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string slotId })

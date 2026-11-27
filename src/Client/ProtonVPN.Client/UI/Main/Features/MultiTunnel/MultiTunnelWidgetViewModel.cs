@@ -20,9 +20,11 @@ using ProtonVPN.Client.Core.Services.Navigation;
 using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Localization.Extensions;
 using ProtonVPN.Client.Logic.Connection.Contracts;
+using ProtonVPN.Client.Logic.Connection.Contracts.Messages;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents;
 using ProtonVPN.Client.Logic.Connection.Contracts.Models.Intents.Locations.Countries;
 using ProtonVPN.Client.Logic.Connection.Contracts.MultiTunnel;
+using ProtonVPN.Client.Services.PortForwarding;
 using ProtonVPN.Client.Settings.Contracts;
 using ProtonVPN.Client.Settings.Contracts.Conflicts.Bases;
 using ProtonVPN.Client.Settings.Contracts.RequiredReconnections;
@@ -35,9 +37,13 @@ using ProtonVPN.StatisticalEvents.Contracts.Dimensions;
 namespace ProtonVPN.Client.UI.Main.Features.MultiTunnel;
 
 public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
-    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>
+    IEventMessageReceiver<MultiTunnelPolicyChangedMessage>,
+    IEventMessageReceiver<PortForwardingPortChangedMessage>,
+    IEventMessageReceiver<PortForwardingStatusChangedMessage>
 {
     private readonly IMultiTunnelManager _multiTunnelManager;
+    private readonly IPortForwardingManager _portForwardingManager;
+    private readonly IPortForwardingClipboardService _portForwardingClipboardService;
     private bool _isRefreshing;
     private bool _isMultiTunnelEnabled;
     private string? _selectedDefaultTargetType = "Direct";
@@ -113,7 +119,9 @@ public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
         IRequiredReconnectionSettings requiredReconnectionSettings,
         ISettingsConflictResolver settingsConflictResolver,
         IProfileEditor profileEditor,
-        IMultiTunnelManager multiTunnelManager)
+        IMultiTunnelManager multiTunnelManager,
+        IPortForwardingManager portForwardingManager,
+        IPortForwardingClipboardService portForwardingClipboardService)
         : base(viewModelHelper,
                mainViewNavigator,
                settingsViewNavigator,
@@ -127,11 +135,28 @@ public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
                ConnectionFeature.MultiTunnel)
     {
         _multiTunnelManager = multiTunnelManager;
+        _portForwardingManager = portForwardingManager;
+        _portForwardingClipboardService = portForwardingClipboardService;
     }
 
     public void Receive(MultiTunnelPolicyChangedMessage message)
     {
         ExecuteOnUIThread(RefreshState);
+    }
+
+    public void Receive(PortForwardingPortChangedMessage message)
+    {
+        ExecuteOnUIThread(RefreshState);
+    }
+
+    public void Receive(PortForwardingStatusChangedMessage message)
+    {
+        ExecuteOnUIThread(RefreshState);
+    }
+
+    public Task CopySlotPortAsync(string slotId)
+    {
+        return _portForwardingClipboardService.CopyActivePortToClipboardAsync(slotId);
     }
 
     protected override void OnActivated()
@@ -219,21 +244,13 @@ public partial class MultiTunnelWidgetViewModel : FeatureWidgetViewModelBase,
                     countryDisplay = slot.CountryCode;
                 }
 
-                Slots.Add(new MultiTunnelSlotItem
-                {
-                    SlotId = slot.SlotId,
-                    CountryCode = slot.CountryCode,
-                    ServerName = slot.ServerName,
-                    City = slot.City,
-                    ClientIpv4 = slot.ClientIpv4,
-                    StatusText = slot.IsConnecting ? "Connecting..." : (slot.IsConnected ? "Connected" : "Ready"),
-                    IsConnected = slot.IsConnected,
-                    IsConnecting = slot.IsConnecting,
-                    LastError = slot.LastError,
-                    SlotColorBrush = SlotColorBrushHelper.ToBrush(MultiTunnelSlotConfig.GetSlotColorHex(slot.SlotId)),
-                    CanRemove = !string.Equals(slot.SlotId, "T1", StringComparison.OrdinalIgnoreCase),
-                    SlotSummary = $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName}",
-                });
+                Slots.Add(MultiTunnelSlotItem.Create(
+                    slot,
+                    countryDisplay,
+                    ruleCount: 0,
+                    Settings.IsPortForwardingEnabled,
+                    _portForwardingManager.GetSlotState(slot.SlotId),
+                    summaryOverride: $"{countryDisplay} ({slot.CountryCode}) • {slot.ServerName}"));
             }
 
             OnPropertyChanged(nameof(Status));

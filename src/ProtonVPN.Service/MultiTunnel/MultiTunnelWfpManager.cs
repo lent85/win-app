@@ -647,6 +647,7 @@ public sealed class MultiTunnelWfpManager : IMultiTunnelWfpManager
                     if (includeIpv6)
                     {
                         _sublayer.CreateNetInterfaceFilter(ifaceDisplay, Action.HardPermit, Layer.AppAuthConnectV6, slot.InterfaceIndex, SafetyFilterWeight);
+                        _sublayer.CreateNetInterfaceFilter(ifaceDisplay, Action.HardPermit, Layer.AppAuthRecvAcceptV6, slot.InterfaceIndex, SafetyFilterWeight);
                     }
                 }, $"SafetyInterface '{slot.SlotId}' (#{slot.InterfaceIndex})");
             }

@@ -60,4 +60,12 @@ public sealed partial class MultiTunnelWidgetView : IContextAware
             await ViewModel.ConnectSlotAsync(slotId);
         }
     }
+
+    private async void OnCopySlotPortClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string slotId })
+        {
+            await ViewModel.CopySlotPortAsync(slotId);
+        }
+    }
 }

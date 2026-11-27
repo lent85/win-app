@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 
 namespace ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
@@ -80,6 +81,9 @@ public class TunnelSlotStateIpcEntity
     [DataMember(Order = 15)] public bool PortForwardingEnabled { get; set; }
     [DataMember(Order = 16)] public int ActiveForwardedPort { get; set; }
     [DataMember(Order = 17)] public bool IsDefaultRouteTunnel { get; set; }
+    [DataMember(Order = 18)] public PortMappingStatusIpcEntity PortForwardingStatus { get; set; }
+    [DataMember(Order = 19)] public bool IsP2PServer { get; set; }
+    [DataMember(Order = 20)] public bool HasPortForwardingError { get; set; }
 }
 
 [DataContract]
@@ -129,6 +133,8 @@ public class MultiTunnelSlotConnectionRequestIpcEntity
     [DataMember(Order = 5)] public string CountryCode { get; set; } = string.Empty;
     [DataMember(Order = 6)] public string ServerName { get; set; } = string.Empty;
     [DataMember(Order = 7)] public ConnectionRequestIpcEntity? ConnectionRequest { get; set; }
+    [DataMember(Order = 8)] public bool PortForwardingEnabled { get; set; }
+    [DataMember(Order = 9)] public bool IsP2PServer { get; set; }
 }
 
 [DataContract]
@@ -139,6 +145,7 @@ public class MultiTunnelSlotConnectionResultIpcEntity
     [DataMember(Order = 3)] public string ConnectedServerName { get; set; } = string.Empty;
     [DataMember(Order = 4)] public string ConnectedEntryIp { get; set; } = string.Empty;
     [DataMember(Order = 5)] public string ErrorMessage { get; set; } = string.Empty;
+    [DataMember(Order = 6)] public bool IsP2PServer { get; set; }
 }
 
 [DataContract]

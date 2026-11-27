@@ -17,13 +17,16 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ProtonVPN.Common.Core.Extensions;
 using ProtonVPN.Common.Core.Networking;
+using ProtonVPN.Common.Legacy.PortForwarding;
 using ProtonVPN.Configurations.Contracts;
 using ProtonVPN.Logging.Contracts;
 using ProtonVPN.Logging.Contracts.Events.SplitTunnelLogs;
 using ProtonVPN.OperatingSystems.Network.Contracts;
 using ProtonVPN.OperatingSystems.Network.Contracts.Routing;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.MultiTunnel;
+using ProtonVPN.ProcessCommunication.Contracts.Entities.PortForwarding;
 using ProtonVPN.ProcessCommunication.Contracts.Entities.Vpn;
 using ProtonVPN.Service.Driver;
 using ProtonVPN.Service.Settings;
@@ -42,6 +45,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
     private readonly IServiceSettings _serviceSettings;
     private readonly IMultiTunnelSlotRunner _slotRunner;
     private readonly IRoutingTableHelper? _routingTableHelper;
+    private readonly IMultiTunnelSlotPortForwardingManager? _slotPortForwardingManager;
 
     public bool EnableBackgroundDnsResolution { get; set; } = true;
     public bool EnableAppProcessWatcher { get; set; } = true;
@@ -51,6 +55,9 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
     private bool _isEnabled;
     private bool _isPrimaryVpnConnected;
+    private int _lastNetShieldMode = 2;
+    private bool _lastSplitTcp = true;
+    private bool _lastModerateNat;
     private VpnProtocol _lastProtocol = VpnProtocol.WireGuardUdp;
     private string? _lastAppliedFingerprint;
     private string? _lastDomainRulesSignature;
@@ -78,7 +85,8 @@ public sealed class MultiTunnelService : IMultiTunnelService
         IConfiguration config,
         IServiceSettings serviceSettings,
         IMultiTunnelSlotRunner? slotRunner = null,
-        IRoutingTableHelper? routingTableHelper = null)
+        IRoutingTableHelper? routingTableHelper = null,
+        IMultiTunnelSlotPortForwardingManager? slotPortForwardingManager = null)
     {
         _logger = logger;
         _orchestrator = orchestrator;
@@ -90,6 +98,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
         _serviceSettings = serviceSettings;
         _slotRunner = slotRunner!;
         _routingTableHelper = routingTableHelper;
+        _slotPortForwardingManager = slotPortForwardingManager;
     }
 
     public void ApplyPolicy(MultiTunnelPolicyIpcEntity policy)
@@ -135,6 +144,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
                     continue;
                 }
 
+                _configuredSlotMeta.TryGetValue(normalizedId, out TunnelSlotStateIpcEntity? previousMeta);
                 _configuredSlotMeta[normalizedId] = slot;
 
                 if (string.Equals(normalizedId, "T1", StringComparison.OrdinalIgnoreCase) && _isPrimaryVpnConnected)
@@ -154,6 +164,21 @@ public sealed class MultiTunnelService : IMultiTunnelService
                 if (_slotRunner is not null)
                 {
                     // Runtime connection state for T2..T5 is owned by ConnectSlotAsync/DisconnectSlotAsync.
+                    if (runtimeSlot.IsConnected && _slotPortForwardingManager is not null)
+                    {
+                        MultiTunnelSlotPortForwardingState? livePf = _slotPortForwardingManager.GetSlotState(normalizedId);
+                        bool previousPf = livePf?.PortForwardingEnabled ?? previousMeta?.PortForwardingEnabled ?? slot.PortForwardingEnabled;
+                        if (previousPf != slot.PortForwardingEnabled)
+                        {
+                            _slotPortForwardingManager.UpdateSlotFeaturesAsync(
+                                normalizedId,
+                                slot.PortForwardingEnabled,
+                                _lastNetShieldMode,
+                                _lastSplitTcp,
+                                _lastModerateNat).FireAndForget();
+                        }
+                    }
+
                     if (!runtimeSlot.IsConnected)
                     {
                         runtimeSlot.CountryCode = slot.ServerCountryCode ?? string.Empty;
@@ -374,6 +399,7 @@ public sealed class MultiTunnelService : IMultiTunnelService
 
     public void OnServiceStop()
     {
+        _slotPortForwardingManager?.StopAllAsync().GetAwaiter().GetResult();
         _slotRunner?.DisconnectAllAsync().GetAwaiter().GetResult();
 
         lock (_lock)
@@ -381,6 +407,33 @@ public sealed class MultiTunnelService : IMultiTunnelService
             CancelBackgroundDnsResolution();
             CancelAppProcessWatcher();
             DisableWfpLocked();
+        }
+    }
+
+    public void RepeatSlotPortForwardingStates()
+    {
+        _slotPortForwardingManager?.RepeatAllStates();
+    }
+
+    public void OnGlobalFeaturesChanged(int netShieldMode, bool splitTcp, bool moderateNat)
+    {
+        List<MultiTunnelSlotPortForwardingState> activeSlots;
+        lock (_lock)
+        {
+            _lastNetShieldMode = netShieldMode;
+            _lastSplitTcp = splitTcp;
+            _lastModerateNat = moderateNat;
+            activeSlots = _slotPortForwardingManager?.GetAllSlotStates().ToList() ?? [];
+        }
+
+        foreach (MultiTunnelSlotPortForwardingState slotPf in activeSlots)
+        {
+            _slotPortForwardingManager?.UpdateSlotFeaturesAsync(
+                slotPf.SlotId,
+                slotPf.PortForwardingEnabled,
+                netShieldMode,
+                splitTcp,
+                moderateNat).FireAndForget();
         }
     }
 
@@ -394,6 +447,19 @@ public sealed class MultiTunnelService : IMultiTunnelService
             foreach (TunnelSlotRuntimeState runtime in runtimeSlots.Values.OrderBy(s => s.SlotIndex))
             {
                 _configuredSlotMeta.TryGetValue(runtime.SlotId, out TunnelSlotStateIpcEntity? meta);
+                MultiTunnelSlotPortForwardingState? livePf = !string.Equals(runtime.SlotId, "T1", StringComparison.OrdinalIgnoreCase)
+                    ? _slotPortForwardingManager?.GetSlotState(runtime.SlotId)
+                    : null;
+
+                PortMappingStatusIpcEntity pfStatus = !runtime.IsConnected
+                    ? PortMappingStatusIpcEntity.Stopped
+                    : livePf is not null
+                    ? (PortMappingStatusIpcEntity)(int)livePf.State.Status
+                    : (meta?.PortForwardingStatus ?? PortMappingStatusIpcEntity.Stopped);
+                int activePort = pfStatus is PortMappingStatusIpcEntity.PortMappingCommunication or PortMappingStatusIpcEntity.SleepingUntilRefresh
+                    ? (livePf is not null ? livePf.State.MappedPort?.MappedPort?.ExternalPort ?? 0 : meta?.ActiveForwardedPort ?? 0)
+                    : 0;
+
                 ipcSlots.Add(new TunnelSlotStateIpcEntity
                 {
                     SlotId = runtime.SlotId,
@@ -410,9 +476,12 @@ public sealed class MultiTunnelService : IMultiTunnelService
                     BouncingLabel = meta?.BouncingLabel ?? string.Empty,
                     Protocol = meta?.Protocol ?? VpnProtocolIpcEntity.WireGuardUdp,
                     NetShieldMode = meta?.NetShieldMode ?? 2,
-                    PortForwardingEnabled = meta?.PortForwardingEnabled ?? false,
-                    ActiveForwardedPort = meta?.ActiveForwardedPort ?? 0,
+                    PortForwardingEnabled = livePf?.PortForwardingEnabled ?? meta?.PortForwardingEnabled ?? false,
+                    ActiveForwardedPort = activePort,
                     IsDefaultRouteTunnel = meta?.IsDefaultRouteTunnel ?? (runtime.SlotIndex == 0),
+                    PortForwardingStatus = pfStatus,
+                    IsP2PServer = livePf?.IsP2PServer ?? meta?.IsP2PServer ?? false,
+                    HasPortForwardingError = runtime.IsConnected && (livePf?.HasPortForwardingError ?? meta?.HasPortForwardingError ?? false),
                 });
             }
 

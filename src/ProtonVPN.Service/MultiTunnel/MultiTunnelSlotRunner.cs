@@ -67,6 +67,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
     private readonly IPermittedRemoteAddress? _permittedRemoteAddress;
     private readonly ISystemNetworkInterfaces? _networkInterfaces;
     private readonly ISecureConfigFileWriter? _secureConfigFileWriter;
+    private readonly IMultiTunnelSlotPortForwardingManager? _slotPortForwardingManager;
 
     public MultiTunnelSlotRunner(
         ILogger logger,
@@ -79,7 +80,8 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         MultiTunnelOrchestrator orchestrator,
         IPermittedRemoteAddress? permittedRemoteAddress = null,
         ISystemNetworkInterfaces? networkInterfaces = null,
-        ISecureConfigFileWriter? secureConfigFileWriter = null)
+        ISecureConfigFileWriter? secureConfigFileWriter = null,
+        IMultiTunnelSlotPortForwardingManager? slotPortForwardingManager = null)
     {
         _logger = logger;
         _staticConfig = staticConfig;
@@ -92,6 +94,7 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         _permittedRemoteAddress = permittedRemoteAddress;
         _networkInterfaces = networkInterfaces;
         _secureConfigFileWriter = secureConfigFileWriter;
+        _slotPortForwardingManager = slotPortForwardingManager;
     }
 
     public static bool IsValidSecondarySlotId(string? slotId)
@@ -153,7 +156,22 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
             VpnCredentials credentials = _entityMapper.Map<VpnCredentialsIpcEntity, VpnCredentials>(request.ConnectionRequest.Credentials);
             VpnConfig vpnConfig = _entityMapper.Map<VpnConfigIpcEntity, VpnConfig>(request.ConnectionRequest.Config);
 
-            VpnHost endpoint = endpoints.FirstOrDefault(e => e.X25519PublicKey is not null && !string.IsNullOrWhiteSpace(e.Ip));
+            VpnHost endpoint = default;
+            if (!string.IsNullOrWhiteSpace(request.ServerName) &&
+                !request.ServerName.Trim().EndsWith("#Fastest", StringComparison.OrdinalIgnoreCase))
+            {
+                string requestedName = request.ServerName.Trim();
+                endpoint = endpoints.FirstOrDefault(e =>
+                    e.X25519PublicKey is not null &&
+                    !string.IsNullOrWhiteSpace(e.Ip) &&
+                    string.Equals(e.Name, requestedName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (endpoint.X25519PublicKey is null || string.IsNullOrWhiteSpace(endpoint.Ip))
+            {
+                endpoint = endpoints.FirstOrDefault(e => e.X25519PublicKey is not null && !string.IsNullOrWhiteSpace(e.Ip));
+            }
+
             if (endpoint.X25519PublicKey is null || string.IsNullOrWhiteSpace(endpoint.Ip))
             {
                 return new MultiTunnelSlotConnectionResultIpcEntity
@@ -168,6 +186,11 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 ? udpPorts.First()
                 : DEFAULT_WIREGUARD_PORT;
 
+            // Destroy the old mapping while its original adapter and gateway still exist.
+            if (_slotPortForwardingManager is not null)
+            {
+                await _slotPortForwardingManager.StopSlotAsync(slotId).ConfigureAwait(false);
+            }
             await StopSlotServiceAsync(slotId).ConfigureAwait(false);
 
             string configPath = GetSlotConfigPath(slotId);
@@ -322,6 +345,22 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 ConfigureSlotInterfaceRoutes(resolvedInterfaceIndex, request.SlotIndex, parsedClientIp, parsedGatewayIp);
             }
 
+            if (_slotPortForwardingManager is not null &&
+                IPAddress.TryParse(clientIpv4, out IPAddress? pfClientIp) &&
+                IPAddress.TryParse(gatewayIpv4, out IPAddress? pfGatewayIp))
+            {
+                await _slotPortForwardingManager.StartSlotAsync(
+                    slotId,
+                    pfClientIp,
+                    pfGatewayIp,
+                    endpoint,
+                    credentials,
+                    vpnConfig,
+                    request.PortForwardingEnabled || vpnConfig.PortForwarding,
+                    request.IsP2PServer,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             _logger.Info<ConnectLog>($"MultiTunnelSlotRunner: Connected slot {slotId} -> {endpoint.Name} ({endpoint.Ip}:{port}, local {clientIpv4}, ifIdx {resolvedInterfaceIndex}).");
 
             return new MultiTunnelSlotConnectionResultIpcEntity
@@ -330,11 +369,20 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
                 SlotId = slotId,
                 ConnectedServerName = endpoint.Name,
                 ConnectedEntryIp = endpoint.Ip,
+                IsP2PServer = request.IsP2PServer,
             };
         }
         catch (Exception ex)
         {
             _logger.Error<ConnectLog>($"MultiTunnelSlotRunner: Failed to connect slot {slotId}.", ex);
+            try
+            {
+                await DisconnectSlotAsync(slotId, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception cleanupException)
+            {
+                _logger.Warn<DisconnectLog>($"MultiTunnelSlotRunner: Failed to clean up slot {slotId}: {cleanupException.Message}");
+            }
             bool removedLast = _orchestrator.DeactivateSlot(slotId, out string cleanupIp);
             if (removedLast && !string.IsNullOrWhiteSpace(cleanupIp))
             {
@@ -363,6 +411,11 @@ public sealed class MultiTunnelSlotRunner : IMultiTunnelSlotRunner
         }
 
         string normalizedId = slotId.Trim().ToUpperInvariant();
+        if (_slotPortForwardingManager is not null)
+        {
+            await _slotPortForwardingManager.StopSlotAsync(normalizedId).ConfigureAwait(false);
+        }
+
         uint interfaceIndex = 0;
         IPAddress? clientIp = null;
         IPAddress? gatewayIp = null;
